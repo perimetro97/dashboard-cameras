@@ -1,0 +1,173 @@
+# streamlit_dashboard.py
+import streamlit as st
+import pandas as pd
+import plotly.express as px
+from datetime import datetime
+
+st.set_page_config(page_title="Dashboard de Câmeras", layout="wide")
+st.title("📊 Dashboard de Câmeras (Streamlit Cloud)")
+
+# ---------------- Sidebar: fonte de dados ----------------
+st.sidebar.header("Configurações de dados")
+data_source = st.sidebar.selectbox("Fonte dos dados", (
+    "Google Sheets (recomendado - publicar como CSV)",
+    "Arquivo Excel no repositório (dados.xlsx)"
+))
+
+st.sidebar.markdown("---")
+
+# Google Sheets: instruções rápidas e campo para colar o link CSV
+if data_source.startswith("Google"):
+    st.sidebar.markdown(
+        "1) No Google Sheets: `Arquivo -> Publicar na web` (escolha a planilha/sheet e `CSV`).\n\n"
+        "2) Cole o link CSV aqui (ex.: `https://docs.google.com/spreadsheets/d/SEU_ID/pub?output=csv`).\n\n"
+        "Observação: você também pode usar o link de export (`/export?format=csv&gid=...`) se a planilha estiver compartilhada."
+    )
+    csv_url = st.sidebar.text_input("Colar link CSV do Google Sheets", value="")
+else:
+    st.sidebar.markdown(
+        "Coloque o arquivo `dados.xlsx` na raiz do repositório. "
+        "O app vai ler as colunas A (nomes) e D (status) e os totais em A50:B52."
+    )
+    csv_url = ""
+
+st.sidebar.markdown("---")
+if st.sidebar.button("🔄 Atualizar / Recarregar"):
+    st.experimental_rerun()
+
+st.info("Se sua planilha estiver no Google Sheets, use essa opção — é a forma mais prática para atualizar sem fazer commits.")
+
+# ---------------- Funções de leitura ----------------
+def read_from_google_csv(url):
+    try:
+        # Leitura para visualização (com header)
+        df_vis = pd.read_csv(url)
+        # Leitura bruta sem header para pegar as linhas 50-52 (índice 49 a 51)
+        df_raw = pd.read_csv(url, header=None, dtype=str)
+        return df_vis, df_raw
+    except Exception as e:
+        st.error(f"Erro ao ler CSV do Google Sheets: {e}")
+        return None, None
+
+def read_from_excel(path="dados.xlsx"):
+    try:
+        # Lê as colunas A e D (nomes e status)
+        df_vis = pd.read_excel(path, usecols="A,D", engine="openpyxl")
+        # Lê A50:B52 para totais (skiprows = 49 -> começa na linha 50)
+        totals = pd.read_excel(path, usecols="A:B", header=None, skiprows=49, nrows=3, engine="openpyxl")
+        totals.columns = ["Indicador","Valor"]
+        return df_vis, totals
+    except Exception as e:
+        st.error(f"Erro ao ler arquivo Excel ({path}): {e}")
+        return None, None
+
+# ---------------- Carregar dados (dependendo da fonte) ----------------
+totals_df = None
+list_maintenance = []
+
+if data_source.startswith("Google"):
+    if not csv_url:
+        st.warning("Cole o link CSV do Google Sheets na sidebar para carregar os dados.")
+        st.stop()
+    df_vis, df_raw = read_from_google_csv(csv_url)
+    if df_vis is None:
+        st.stop()
+    # Determinar colunas: assumimos A = primeira coluna, D = quarta coluna (se existir)
+    cols_vis = list(df_vis.columns)
+    if len(cols_vis) >= 4:
+        local_col = cols_vis[0]
+        status_col = cols_vis[3]
+    else:
+        # fallback: primeira e última coluna
+        local_col = cols_vis[0]
+        status_col = cols_vis[-1]
+    # montar lista de locais que contem "faltando"
+    try:
+        list_maintenance = df_vis[df_vis[status_col].astype(str).str.contains("faltando", case=False, na=False)][local_col].dropna().astype(str).tolist()
+    except Exception:
+        list_maintenance = []
+    # pegar totais das linhas 50-52 do CSV bruto (header=None)
+    try:
+        totals_raw = df_raw.iloc[49:52, 0:2]  # linhas 50-52, col A e B
+        totals_raw.columns = ["Indicador","Valor"]
+        totals_raw["Valor"] = pd.to_numeric(totals_raw["Valor"], errors="coerce").fillna(0).astype(int)
+        totals_df = totals_raw
+    except Exception:
+        totals_df = pd.DataFrame({"Indicador":[],"Valor":[]})
+else:
+    # Excel no repo
+    df_vis, totals_df = read_from_excel("dados.xlsx")
+    if df_vis is None:
+        st.stop()
+    # df_vis já só tem A e D (nome/status)
+    local_col = df_vis.columns[0]
+    status_col = df_vis.columns[1] if len(df_vis.columns) > 1 else df_vis.columns[-1]
+    try:
+        list_maintenance = df_vis[df_vis[status_col].astype(str).str.contains("faltando", case=False, na=False)][local_col].dropna().astype(str).tolist()
+    except Exception:
+        list_maintenance = []
+
+# ---------------- Tratamento dos totais ----------------
+def get_total(df, keyword):
+    try:
+        mask = df["Indicador"].astype(str).str.contains(keyword, case=False, na=False)
+        if mask.any():
+            return int(df.loc[mask, "Valor"].iloc[0])
+    except Exception:
+        pass
+    return 0
+
+val_online = get_total(totals_df, "online")
+val_offline = get_total(totals_df, "offline")
+# pegar manut por palavra-chave 'manut' ou 'realizar'
+val_manut = get_total(totals_df, "manut")
+if val_manut == 0:
+    val_manut = get_total(totals_df, "realizar")
+
+# ---------------- UI: métricas ----------------
+col1, col2, col3 = st.columns(3)
+col1.metric("Câmeras Online", val_online)
+col2.metric("Câmeras Offline", val_offline)
+col3.metric("Manutenções", val_manut)
+
+# ---------------- Gráfico donut/pizza ----------------
+if not totals_df.empty:
+    # Garante ordem (online, offline, manut) se existirem
+    display_df = totals_df.copy()
+    # Ajuste de cores: online verde, offline vermelho, manut laranja
+    color_map = {
+        "online": "#27AE60",
+        "offline": "#E74C3C",
+        "manut": "#F39C12",
+        "realizar": "#F39C12"
+    }
+    # tenta mapear cores por nome conteúdo
+    colors = []
+    for txt in display_df["Indicador"].astype(str).str.lower():
+        if "online" in txt:
+            colors.append(color_map["online"])
+        elif "offline" in txt:
+            colors.append(color_map["offline"])
+        else:
+            colors.append(color_map["manut"])
+    fig = px.pie(display_df, names="Indicador", values="Valor", hole=0.4)
+    try:
+        fig.update_traces(marker=dict(colors=colors))
+    except Exception:
+        pass
+    st.plotly_chart(fig, use_container_width=True)
+else:
+    st.info("Totais (A50:B52) não encontrados. Verifique o formato da planilha.")
+
+# ---------------- Lista de locais de manutenção ----------------
+st.subheader(f"📍 Locais que precisam de manutenção ({len(list_maintenance)})")
+with st.expander("Mostrar lista", expanded=True):
+    if list_maintenance:
+        for x in list_maintenance:
+            st.write(f"- {x}")
+    else:
+        st.success("Nenhum local com manutenção pendente! ✅")
+
+# ---------------- Footer / info ----------------
+st.markdown("---")
+st.caption("Editar a planilha no Google Sheets (ou atualizar o arquivo no repo) e recarregar a página para ver a atualização.")
