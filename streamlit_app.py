@@ -110,7 +110,7 @@ df = df.rename(columns={local_col_name: "Local", qtd_col_name: "Qtd", status_col
 try:
     raw_date = df.iloc[54, 0]  # A55
     if pd.isna(raw_date):
-        ultima_atualizacao = "01/10/2025"
+        ultima_atualizacao = "Não informada"
     else:
         # tratar se for datetime ou string
         try:
