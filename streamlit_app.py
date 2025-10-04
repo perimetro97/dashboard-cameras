@@ -208,52 +208,36 @@ with col3:
 st.markdown("---")
 
 
-# ---------------- Lista de Manutenção ----------------
-st.subheader("🔧 Locais em Manutenção")
+# ---------------- Tabela de manutenção (bonita) ----------------
+st.subheader("📍 Locais que precisam de manutenção")
 
-manutencao = []
+if manut_records:
+    df_manut = pd.DataFrame(manut_records)
+    # Organizar: ordenar por Qtde desc
+    df_manut = df_manut.sort_values(by="Qtde", ascending=False).reset_index(drop=True)
 
-for _, row in df.iterrows():
-    local = str(row[col_local]).strip()
-    status = str(row[col_status]).lower().strip()
+    # Ajustar coluna Status com classes para cor via HTML
+    def status_html(s):
+        s_low = s.lower()
+        if "faltando" in s_low:
+            return f"<span class='status-faltando'>{s}</span>"
+        elif "offline" in s_low:
+            return f"<span class='status-offline'>{s}</span>"
+        else:
+            return f"<span class='status-online'>{s}</span>"
 
-    if "offline" in status:
-        manutencao.append({"Local": local, "Problema": "Offline", "Qtd Faltando": 0})
-    elif "faltando" in status:
-        try:
-            num = int(status.replace("faltando", "").strip())
-        except:
-            num = 0
-        manutencao.append({"Local": local, "Problema": f"Faltando {num}", "Qtd Faltando": num})
+    # Construir HTML da tabela manualmente para aplicar classes e animação
+    html = "<table class='styled-table'><thead><tr><th>Local</th><th>Qtde de câmeras</th><th>Status</th></tr></thead><tbody>"
+    for _, r in df_manut.iterrows():
+        local = str(r["Local"])
+        qtd = int(r["Qtde"])
+        stat = str(r["Status"])
+        html += f"<tr><td>{local}</td><td>{qtd}</td><td>{status_html(stat)}</td></tr>"
+    html += "</tbody></table>"
 
-if manutencao:
-    df_manut = pd.DataFrame(manutencao)
-
-    # Reordenando: Offline primeiro, depois pelo maior número de câmeras faltando
-    df_manut["Offline"] = df_manut["Problema"].apply(lambda x: 1 if "offline" in x.lower() else 0)
-    df_manut = df_manut.sort_values(by=["Offline", "Qtd Faltando"], ascending=[False, False])
-
-    # CSS para animação fade-in
-    st.markdown(
-        """
-        <style>
-        @keyframes fadeIn {
-            from {opacity: 0;}
-            to {opacity: 1;}
-        }
-        .stDataFrame { 
-            animation: fadeIn 1s ease-in;
-        }
-        </style>
-        """,
-        unsafe_allow_html=True
-    )
-
-    st.dataframe(df_manut.drop(columns=["Qtd Faltando", "Offline"]), 
-                 use_container_width=True, hide_index=True)
-
+    st.markdown(html, unsafe_allow_html=True)
 else:
-    st.success("✅ Nenhum local precisa de manutenção no momento.")
+    st.success("✅ Nenhum local em manutenção no momento.")
 
 
 st.markdown("---")
