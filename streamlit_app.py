@@ -106,31 +106,27 @@ else:
 
 df = df.rename(columns={local_col_name: "Local", qtd_col_name: "Qtd", status_col_name: "Status"})
 
-from openpyxl import load_workbook
-
-# ---------------- Data de atualização (pega diretamente A55) ----------------
+# ---------------- Data de atualização (A55 -> índice 54, coluna 0) ----------------
 try:
-    wb = load_workbook("dados.xlsx", data_only=True)
-    sheet = wb.active
-    raw_date = sheet["A55"].value  # pega diretamente a célula A55
-
-    if raw_date is None:
+    raw_date = df.iloc[54, 0]  # A55
+    if pd.isna(raw_date):
         ultima_atualizacao = "Não informada"
     else:
-        # se for data verdadeira
-        if isinstance(raw_date, (pd.Timestamp, datetime)):
-            ultima_atualizacao = raw_date.strftime("%d/%m/%Y")
-        else:
-            try:
+        # tratar se for datetime ou string
+        try:
+            if isinstance(raw_date, (pd.Timestamp, datetime)):
+                ultima_atualizacao = raw_date.strftime("%d/%m/%Y")
+            else:
+                # tenta converter string para datetime
                 dt = pd.to_datetime(str(raw_date), dayfirst=True, errors="coerce")
                 if pd.isna(dt):
                     ultima_atualizacao = str(raw_date)
                 else:
                     ultima_atualizacao = dt.strftime("%d/%m/%Y")
-            except:
-                ultima_atualizacao = str(raw_date)
-except Exception as e:
-    ultima_atualizacao = "Erro ao ler data"
+        except Exception:
+            ultima_atualizacao = str(raw_date)
+except Exception:
+    ultima_atualizacao = "Não informada"
 
 st.markdown(f"📅 **Atualizado em:** {ultima_atualizacao}")
 st.markdown("---")
@@ -212,36 +208,52 @@ with col3:
 st.markdown("---")
 
 
-# ---------------- Tabela de manutenção (bonita) ----------------
-st.subheader("📍 Locais que precisam de manutenção")
+# ---------------- Lista de Manutenção ----------------
+st.subheader("🔧 Locais em Manutenção")
 
-if manut_records:
-    df_manut = pd.DataFrame(manut_records)
-    # Organizar: ordenar por Qtde desc
-    df_manut = df_manut.sort_values(by="Qtde", ascending=False).reset_index(drop=True)
+manutencao = []
 
-    # Ajustar coluna Status com classes para cor via HTML
-    def status_html(s):
-        s_low = s.lower()
-        if "faltando" in s_low:
-            return f"<span class='status-faltando'>{s}</span>"
-        elif "offline" in s_low:
-            return f"<span class='status-offline'>{s}</span>"
-        else:
-            return f"<span class='status-online'>{s}</span>"
+for _, row in df.iterrows():
+    local = str(row[col_local]).strip()
+    status = str(row[col_status]).lower().strip()
 
-    # Construir HTML da tabela manualmente para aplicar classes e animação
-    html = "<table class='styled-table'><thead><tr><th>Local</th><th>Qtde de câmeras</th><th>Status</th></tr></thead><tbody>"
-    for _, r in df_manut.iterrows():
-        local = str(r["Local"])
-        qtd = int(r["Qtde"])
-        stat = str(r["Status"])
-        html += f"<tr><td>{local}</td><td>{qtd}</td><td>{status_html(stat)}</td></tr>"
-    html += "</tbody></table>"
+    if "offline" in status:
+        manutencao.append({"Local": local, "Problema": "Offline", "Qtd Faltando": 0})
+    elif "faltando" in status:
+        try:
+            num = int(status.replace("faltando", "").strip())
+        except:
+            num = 0
+        manutencao.append({"Local": local, "Problema": f"Faltando {num}", "Qtd Faltando": num})
 
-    st.markdown(html, unsafe_allow_html=True)
+if manutencao:
+    df_manut = pd.DataFrame(manutencao)
+
+    # Reordenando: Offline primeiro, depois pelo maior número de câmeras faltando
+    df_manut["Offline"] = df_manut["Problema"].apply(lambda x: 1 if "offline" in x.lower() else 0)
+    df_manut = df_manut.sort_values(by=["Offline", "Qtd Faltando"], ascending=[False, False])
+
+    # CSS para animação fade-in
+    st.markdown(
+        """
+        <style>
+        @keyframes fadeIn {
+            from {opacity: 0;}
+            to {opacity: 1;}
+        }
+        .stDataFrame { 
+            animation: fadeIn 1s ease-in;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
+
+    st.dataframe(df_manut.drop(columns=["Qtd Faltando", "Offline"]), 
+                 use_container_width=True, hide_index=True)
+
 else:
-    st.success("✅ Nenhum local em manutenção no momento.")
+    st.success("✅ Nenhum local precisa de manutenção no momento.")
 
 
 st.markdown("---")
@@ -274,3 +286,32 @@ fig.update_layout(
 )
 
 st.plotly_chart(fig, use_container_width=True)
+
+
+
+atualização bug data:
+
+linas 109 a 129
+
+
+# ---------------- Data de atualização (A55 -> índice 54, coluna 0) ----------------
+try:
+    raw_date = df.iloc[54, 0]  # A55
+    if pd.isna(raw_date):
+        ultima_atualizacao = "Não informada"
+    else:
+        # tratar se for datetime ou string
+        try:
+            if isinstance(raw_date, (pd.Timestamp, datetime)):
+                ultima_atualizacao = raw_date.strftime("%d/%m/%Y")
+            else:
+                # tenta converter string para datetime
+                dt = pd.to_datetime(str(raw_date), dayfirst=True, errors="coerce")
+                if pd.isna(dt):
+                    ultima_atualizacao = str(raw_date)
+                else:
+                    ultima_atualizacao = dt.strftime("%d/%m/%Y")
+        except Exception:
+            ultima_atualizacao = str(raw_date)
+except Exception:
+    ultima_atualizacao = "Não informada"
