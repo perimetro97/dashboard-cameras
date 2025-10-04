@@ -1,4 +1,4 @@
-# streamlit_app.py 
+# streamlit_app.py (ajustado conforme pedido)
 import re
 from datetime import datetime
 
@@ -15,7 +15,7 @@ st.set_page_config(page_title="Dashboard de Câmeras - Grupo Perímetro",
 # ---------------- CSS (cores, animação, tabela) ----------------
 st.markdown("""
     <style>
-    .top-gradient { height:8px; background: linear-gradient(90deg, #1E3A8A 0%, #FF6600 100%); margin-bottom: 12px; border-radius: 4px; }
+    .top-gradient { height:8px; background: linear-gradient(90deg, #1E3A8A 0%, #FF0000 100%); margin-bottom: 12px; border-radius: 4px; }
     .hdr-title { color:#FF6600; font-weight:700; margin:0; }
     .hdr-sub { color:#1E1E5E; margin:0 0 6px 0; }
     .metric-card { background: #ffffff; border-radius: 12px; padding: 16px; text-align: center; box-shadow: 0 6px 20px rgba(0,0,0,0.06); transition: transform 0.25s ease, box-shadow 0.25s ease; }
@@ -30,7 +30,7 @@ st.markdown("""
     .offline-row { background-color: #ffe9d6; }  /* laranja claro */
     .faltando-row { background-color: #fff7e6; } /* amarelo bem suave */
     .status-label { font-weight: 600; padding: 4px 10px; border-radius: 6px; color: #fff; display: inline-block; }
-    .status-offline { background-color: #FF6600; } /* laranja forte */
+    .status-offline { background-color: #FF0000; } /* vermelho para offline */
     .status-faltando { background-color: #FFC107; color:#000; } /* amarelo */
     @keyframes fadeIn { from {opacity: 0; transform: translateY(6px);} to {opacity: 1; transform: translateY(0);} }
     .footer { color: #777; font-size: 13px; margin-top: 18px; }
@@ -82,25 +82,9 @@ except Exception:
 st.markdown(f"📅 **Última atualização:** {ultima_atualizacao}")
 st.markdown("---")
 
-# ---------------- Detectar colunas (robusto) ----------------
+# ---------------- Detectar colunas ----------------
 cols = list(df.columns)
-def find_col_by_keywords(keywords):
-    for c in cols:
-        lname = str(c).lower()
-        for k in keywords:
-            if k in lname:
-                return c
-    return None
-
-if len(cols) >= 4:
-    col_local = cols[0]
-    col_qtd = cols[2]
-    col_status = cols[3]
-else:
-    col_local = find_col_by_keywords(["local", "nome", "site"]) or cols[0]
-    col_qtd = find_col_by_keywords(["qtd", "quant", "cameras", "câmeras"]) or (cols[1] if len(cols) > 1 else cols[0])
-    col_status = find_col_by_keywords(["status", "estado", "situação", "observ"]) or cols[-1]
-
+col_local, col_qtd, col_status = cols[0], cols[2], cols[3]
 df[col_local] = df[col_local].astype(str).fillna("").str.strip()
 df[col_status] = df[col_status].astype(str).fillna("").str.strip()
 
@@ -111,22 +95,21 @@ def parse_int_safe(x):
             return None
         if isinstance(x, (int, float)):
             return int(x)
-        s = str(x)
-        m = re.search(r"(\d+)", s.replace(".", "").replace(",", ""))
+        m = re.search(r"(\d+)", str(x))
         if m:
             return int(m.group(1))
-        return int(float(re.sub(r"[^\d\.]", "", s)))
-    except Exception:
+    except:
         return None
+    return None
 
-# ---------------- Câmeras Online (C4:C42 -> índices 3..41) ----------------
+# ---------------- Somatório de câmeras online ----------------
 try:
     series_online = pd.to_numeric(df[col_qtd].iloc[3:42], errors="coerce").fillna(0)
     cameras_online = int(series_online.sum())
 except Exception:
     cameras_online = 0
 
-# ---------------- Montar lista de manutenção ----------------
+# ---------------- Lista de manutenção ----------------
 manut_records = []
 for _, row in df.iterrows():
     local = str(row.get(col_local, "")).strip()
@@ -136,13 +119,10 @@ for _, row in df.iterrows():
     qtd_cell = row.get(col_qtd, None)
 
     if "faltando" in status_text:
-        m = re.search(r"faltando\s*[:\-]?\s*(\d+)", status_text)
-        qtd = parse_int_safe(m.group(1)) if m else parse_int_safe(qtd_cell)
-        qtd = qtd or 0
-        manut_records.append({"Local": local, "Qtde": int(qtd), "Status": f"Faltando {int(qtd)}", "Tipo": "faltando"})
+        qtd = parse_int_safe(status_text) or parse_int_safe(qtd_cell) or 0
+        manut_records.append({"Local": local, "Qtde": qtd, "Status": f"Faltando {qtd}", "Tipo": "faltando"})
     elif "offline" in status_text or status_text == "off":
-        qtd = parse_int_safe(qtd_cell) or 1
-        manut_records.append({"Local": local, "Qtde": int(qtd), "Status": f"Offline ({int(qtd)})", "Tipo": "offline"})
+        manut_records.append({"Local": local, "Qtde": 1, "Status": "Offline", "Tipo": "offline"})
 
 cameras_offline = sum(r["Qtde"] for r in manut_records)
 
@@ -153,7 +133,7 @@ with c1:
                 f"<div class='metric-value' style='color:#27AE60'>{cameras_online}</div></div>", unsafe_allow_html=True)
 with c2:
     st.markdown(f"<div class='metric-card'><div class='metric-title'>Câmeras Offline</div>"
-                f"<div class='metric-value' style='color:#FF6600'>{cameras_offline}</div></div>", unsafe_allow_html=True)
+                f"<div class='metric-value' style='color:#FF0000'>{cameras_offline}</div></div>", unsafe_allow_html=True)
 with c3:
     st.markdown(f"<div class='metric-card'><div class='metric-title'>Locais em Manutenção</div>"
                 f"<div class='metric-value' style='color:#FF6600'>{len(manut_records)}</div></div>", unsafe_allow_html=True)
@@ -186,7 +166,7 @@ st.markdown("---")
 st.subheader("📊 Comparativo: Online vs Offline")
 df_chart = pd.DataFrame({"Status": ["Online", "Offline"], "Quantidade": [int(cameras_online), int(cameras_offline)]})
 fig = px.bar(df_chart, x="Status", y="Quantidade", text="Quantidade",
-             color="Status", color_discrete_map={"Online": "#27AE60", "Offline": "#FF6600"}, height=420)
+             color="Status", color_discrete_map={"Online": "#27AE60", "Offline": "#FF0000"}, height=420)
 fig.update_traces(textposition="outside", hovertemplate="<b>%{x}</b><br>%{y} câmeras")
 fig.update_layout(xaxis_title="", yaxis_title="Quantidade de câmeras", plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)", transition={"duration": 400})
 st.plotly_chart(fig, use_container_width=True)
