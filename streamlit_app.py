@@ -288,12 +288,6 @@ fig.update_layout(
 st.plotly_chart(fig, use_container_width=True)
 
 
-
-atualização bug data:
-
-linas 109 a 129
-
-
 # ---------------- Data de atualização (A55 -> índice 54, coluna 0) ----------------
 try:
     raw_date = df.iloc[54, 0]  # A55
