@@ -165,4 +165,70 @@ except Exception:
     cameras_online = 0
 
 manut_records = []
-for _, row in
+for _, row in df.iterrows():
+    local = str(row.get(col_local, "")).strip()
+    status_text = str(row.get(col_status, "")).strip().lower()
+    if not local: continue
+
+    if "faltando" in status_text:
+        manut_records.append({"Local": local, "Status": f"Faltando"})
+    elif "offline" in status_text or status_text == "off":
+        manut_records.append({"Local": local, "Status": "Offline"})
+
+cameras_offline = len([r for r in manut_records if r["Status"] == "Offline"])
+
+# ---------------- Cards ----------------
+c1, c2, c3 = st.columns(3)
+with c1:
+    st.markdown(f"<div class='metric-card'><div class='metric-title'>Câmeras Online</div>"
+                f"<div class='metric-value' style='color:#27AE60'>{cameras_online}</div></div>", unsafe_allow_html=True)
+with c2:
+    st.markdown(f"<div class='metric-card'><div class='metric-title'>Câmeras Offline</div>"
+                f"<div class='metric-value' style='color:#DC3545'>{cameras_offline}</div></div>", unsafe_allow_html=True)
+with c3:
+    st.markdown(f"<div class='metric-card'><div class='metric-title'>Locais em Manutenção</div>"
+                f"<div class='metric-value' style='color:#FF6600'>{len(manut_records)}</div></div>", unsafe_allow_html=True)
+
+st.markdown("---")
+
+# ---------------- Tabela de manutenção ----------------
+st.subheader("🔧 Locais que precisam de manutenção")
+
+if manut_records:
+    html = "<table class='styled-table'><thead><tr><th>Local</th><th>Status</th></tr></thead><tbody>"
+    for r in manut_records:
+        status = r["Status"]
+        if status.lower() == "offline":
+            cls = "offline-row"
+            status_html = "<span class='status-label status-offline'>Offline</span>"
+        else:
+            cls = "faltando-row"
+            status_html = "<span class='status-label status-faltando'>Faltando</span>"
+        html += f"<tr class='{cls}'><td>{r['Local']}</td><td>{status_html}</td></tr>"
+    html += "</tbody></table>"
+    st.markdown(html, unsafe_allow_html=True)
+else:
+    st.success("✅ Nenhum local em manutenção no momento.")
+
+st.markdown("---")
+
+# ---------------- Gráfico ----------------
+st.subheader("📊 Comparativo: Online vs Offline")
+
+df_chart = pd.DataFrame({
+    "Status": ["Online", "Offline"],
+    "Quantidade": [int(cameras_online), int(cameras_offline)]
+})
+
+fig = px.bar(df_chart, x="Status", y="Quantidade", text="Quantidade",
+             color="Status",
+             color_discrete_map={"Online": "#27AE60", "Offline": "#DC3545"},
+             height=420)
+
+fig.update_traces(textposition="outside")
+fig.update_layout(xaxis_title="", yaxis_title="Quantidade de câmeras",
+                  plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)")
+st.plotly_chart(fig, use_container_width=True)
+
+# ---------------- Footer ----------------
+st.markdown("<div class='footer'>© Grupo Perímetro - 2025</div>", unsafe_allow_html=True)
