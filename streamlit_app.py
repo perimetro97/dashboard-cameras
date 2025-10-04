@@ -1,4 +1,4 @@
-# streamlit_app.py
+# streamlit_app.py 
 import re
 from datetime import datetime
 
@@ -26,11 +26,11 @@ st.markdown("""
     .styled-table thead tr { background-color: #1E3A8A; color: #fff; text-align: left; font-weight: 700; }
     .styled-table th, .styled-table td { padding: 10px 14px; }
     .styled-table tbody tr { border-bottom: 1px solid #f0f0f0; transition: background-color 0.18s ease, transform 0.12s ease; }
-    .styled-table tbody tr:hover { background-color: #f9f9f9; transform: translateX(4px); }
-    .offline-row { background-color: #ffecec; }  /* vermelho claro */
-    .faltando-row { background-color: #fff7e6; } /* laranja bem clara */
+    .styled-table tbody tr:hover { background-color: #faf3eb; transform: translateX(4px); }
+    .offline-row { background-color: #ffe9d6; }  /* laranja claro */
+    .faltando-row { background-color: #fff7e6; } /* amarelo bem suave */
     .status-label { font-weight: 600; padding: 4px 10px; border-radius: 6px; color: #fff; display: inline-block; }
-    .status-offline { background-color: #DC3545; } /* vermelho */
+    .status-offline { background-color: #FF6600; } /* laranja forte */
     .status-faltando { background-color: #FFC107; color:#000; } /* amarelo */
     @keyframes fadeIn { from {opacity: 0; transform: translateY(6px);} to {opacity: 1; transform: translateY(0);} }
     .footer { color: #777; font-size: 13px; margin-top: 18px; }
@@ -101,7 +101,6 @@ else:
     col_qtd = find_col_by_keywords(["qtd", "quant", "cameras", "câmeras"]) or (cols[1] if len(cols) > 1 else cols[0])
     col_status = find_col_by_keywords(["status", "estado", "situação", "observ"]) or cols[-1]
 
-# normalizar campos
 df[col_local] = df[col_local].astype(str).fillna("").str.strip()
 df[col_status] = df[col_status].astype(str).fillna("").str.strip()
 
@@ -113,61 +112,39 @@ def parse_int_safe(x):
         if isinstance(x, (int, float)):
             return int(x)
         s = str(x)
-        # extrair primeiro número inteiro que aparecer
         m = re.search(r"(\d+)", s.replace(".", "").replace(",", ""))
         if m:
             return int(m.group(1))
-        # tentar conversão direta
         return int(float(re.sub(r"[^\d\.]", "", s)))
     except Exception:
         return None
 
-# ---------------- Câmeras Online (somar C4:C42 -> índices 3..41) ----------------
+# ---------------- Câmeras Online (C4:C42 -> índices 3..41) ----------------
 try:
     series_online = pd.to_numeric(df[col_qtd].iloc[3:42], errors="coerce").fillna(0)
     cameras_online = int(series_online.sum())
 except Exception:
     cameras_online = 0
 
-# ---------------- Montar lista de manutenção com Qtde correta ----------------
+# ---------------- Montar lista de manutenção ----------------
 manut_records = []
-for idx, row in df.iterrows():
+for _, row in df.iterrows():
     local = str(row.get(col_local, "")).strip()
     if not local:
         continue
     status_text = str(row.get(col_status, "")).strip().lower()
     qtd_cell = row.get(col_qtd, None)
 
-    # faltando X
     if "faltando" in status_text:
         m = re.search(r"faltando\s*[:\-]?\s*(\d+)", status_text)
-        if m:
-            qtd = parse_int_safe(m.group(1)) or 0
-        else:
-            qtd = parse_int_safe(qtd_cell) or 0
+        qtd = parse_int_safe(m.group(1)) if m else parse_int_safe(qtd_cell)
+        qtd = qtd or 0
         manut_records.append({"Local": local, "Qtde": int(qtd), "Status": f"Faltando {int(qtd)}", "Tipo": "faltando"})
-    # offline / off
     elif "offline" in status_text or status_text == "off":
-        qtd = parse_int_safe(qtd_cell)
-        if qtd is None or qtd == 0:
-            qtd = 1  # fallback: contar como 1 câmera
-        manut_records.append({"Local": local, "Qtde": int(qtd), "Status": "Offline", "Tipo": "offline"})
-    else:
-        # não é manutenção
-        pass
+        qtd = parse_int_safe(qtd_cell) or 1
+        manut_records.append({"Local": local, "Qtde": int(qtd), "Status": f"Offline ({int(qtd)})", "Tipo": "offline"})
 
-# ---------------- Somar câmeras offline corretamente ----------------
 cameras_offline = sum(r["Qtde"] for r in manut_records)
-
-# ---------------- Debug opcional ----------------
-debug = st.sidebar.checkbox("Mostrar debug (valores internos)", value=False)
-if debug:
-    st.sidebar.markdown("**Colunas detectadas**")
-    st.sidebar.write({"col_local": col_local, "col_qtd": col_qtd, "col_status": col_status})
-    st.sidebar.markdown("**Primeiras linhas (preview)**")
-    st.sidebar.dataframe(df.head(10))
-    st.sidebar.markdown("**Registros de manutenção extraídos**")
-    st.sidebar.dataframe(pd.DataFrame(manut_records))
 
 # ---------------- Cards ----------------
 c1, c2, c3 = st.columns(3)
@@ -176,18 +153,17 @@ with c1:
                 f"<div class='metric-value' style='color:#27AE60'>{cameras_online}</div></div>", unsafe_allow_html=True)
 with c2:
     st.markdown(f"<div class='metric-card'><div class='metric-title'>Câmeras Offline</div>"
-                f"<div class='metric-value' style='color:#DC3545'>{cameras_offline}</div></div>", unsafe_allow_html=True)
+                f"<div class='metric-value' style='color:#FF6600'>{cameras_offline}</div></div>", unsafe_allow_html=True)
 with c3:
     st.markdown(f"<div class='metric-card'><div class='metric-title'>Locais em Manutenção</div>"
                 f"<div class='metric-value' style='color:#FF6600'>{len(manut_records)}</div></div>", unsafe_allow_html=True)
 
 st.markdown("---")
 
-# ---------------- Tabela de manutenção (apenas Local + Status, cores conforme pedido) ----------------
+# ---------------- Tabela de manutenção ----------------
 st.subheader("🔧 Locais que precisam de manutenção")
 if manut_records:
     df_manut = pd.DataFrame(manut_records)
-    # ordenar: offline primeiro, depois faltando por Qtde desc
     df_manut["is_offline"] = df_manut["Tipo"].apply(lambda t: 1 if t == "offline" else 0)
     df_manut = df_manut.sort_values(by=["is_offline", "Qtde"], ascending=[False, False]).reset_index(drop=True)
 
@@ -195,9 +171,9 @@ if manut_records:
     for _, r in df_manut.iterrows():
         cls = "offline-row" if r["Tipo"] == "offline" else "faltando-row"
         if r["Tipo"] == "offline":
-            status_html = "<span class='status-label status-offline'>Offline</span>"
+            status_html = f"<span class='status-label status-offline'>{r['Status']}</span>"
         else:
-            status_html = "<span class='status-label status-faltando'>Faltando</span>"
+            status_html = f"<span class='status-label status-faltando'>{r['Status']}</span>"
         html += f"<tr class='{cls}'><td>{r['Local']}</td><td>{status_html}</td></tr>"
     html += "</tbody></table>"
     st.markdown(html, unsafe_allow_html=True)
@@ -206,11 +182,11 @@ else:
 
 st.markdown("---")
 
-# ---------------- Gráfico de barras (Plotly) ----------------
+# ---------------- Gráfico ----------------
 st.subheader("📊 Comparativo: Online vs Offline")
 df_chart = pd.DataFrame({"Status": ["Online", "Offline"], "Quantidade": [int(cameras_online), int(cameras_offline)]})
 fig = px.bar(df_chart, x="Status", y="Quantidade", text="Quantidade",
-             color="Status", color_discrete_map={"Online": "#27AE60", "Offline": "#DC3545"}, height=420)
+             color="Status", color_discrete_map={"Online": "#27AE60", "Offline": "#FF6600"}, height=420)
 fig.update_traces(textposition="outside", hovertemplate="<b>%{x}</b><br>%{y} câmeras")
 fig.update_layout(xaxis_title="", yaxis_title="Quantidade de câmeras", plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)", transition={"duration": 400})
 st.plotly_chart(fig, use_container_width=True)
