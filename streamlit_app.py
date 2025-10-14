@@ -104,7 +104,7 @@ def parse_int_safe(x):
 
 # ---------------- Somatório de câmeras online ----------------
 try:
-    series_online = pd.to_numeric(df[col_qtd].iloc[3:42], errors="coerce").fillna(0)
+    series_online = pd.to_numeric(df[col_qtd].iloc[3:47], errors="coerce").fillna(0)
     cameras_online = int(series_online.sum())
 except Exception:
     cameras_online = 0
