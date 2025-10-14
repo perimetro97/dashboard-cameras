@@ -47,7 +47,7 @@ with col_logo:
         st.write("")
 with col_title:
     st.markdown("<div style='line-height:1.0'>"
-                "<h1 class='hdr-title'>📊 Dashboard de Câmeras - Grupo Perímetro</h1>"
+                "<h1 class='hdr-title'>Dashboard de Câmeras - Grupo Perímetro</h1>"
                 "<div class='hdr-sub'>Painel de status das câmeras</div>"
                 "</div>", unsafe_allow_html=True)
 st.markdown("---")
@@ -163,7 +163,7 @@ else:
 st.markdown("---")
 
 # ---------------- Gráfico ----------------
-st.subheader("📊 Comparativo: Online vs Offline")
+st.subheader("Comparativo: Online vs Offline")
 df_chart = pd.DataFrame({"Status": ["Online", "Offline"], "Quantidade": [int(cameras_online), int(cameras_offline)]})
 fig = px.bar(df_chart, x="Status", y="Quantidade", text="Quantidade",
              color="Status", color_discrete_map={"Online": "#27AE60", "Offline": "#FF0000"}, height=420)
