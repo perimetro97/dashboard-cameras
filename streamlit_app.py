@@ -266,4 +266,4 @@ with col_pie:
     st.plotly_chart(pie, use_container_width=True)
 
 # ==================== RODAPÉ ====================
-st.markdown("<div class='footer'>© Grupo Perímetro - 2025</div>", unsafe_allow_html=True)
+st.markdown("<div class='footer'>© Grupo Perímetro & Monitoramento - 2025</div>", unsafe_allow_html=True)
