@@ -77,7 +77,7 @@ with c_logo:
         st.write("")
 with c_head:
     st.markdown(f"<div class='hdr-wrap'><h1 class='hdr-title'>Dashboard de Câmeras - Grupo Perímetro</h1></div>", unsafe_allow_html=True)
-    st.markdown(f"<p class='hdr-sub'>Relatório operacional diário</p>", unsafe_allow_html=True)
+    st.markdown(f"<p class='hdr-sub'>Controle de câmeras.</p>", unsafe_allow_html=True)
 st.markdown("---")
 
 # ==================== LEITURA DA PLANILHA ====================
