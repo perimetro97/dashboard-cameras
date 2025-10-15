@@ -1,4 +1,4 @@
-# streamlit_app.py – versão final com gráfico de pizza e visual refinado
+# streamlit_app.py
 import re
 from datetime import datetime, timedelta
 import pandas as pd
