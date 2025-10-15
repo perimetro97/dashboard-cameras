@@ -123,7 +123,7 @@ try:
 except Exception:
     ultima_atualizacao = "Erro ao ler data"
 
-st.markdown(f"📅 **Última atualização:** {ultima_atualizacao}")
+st.markdown(f" **Última atualização:** {ultima_atualizacao}")
 st.markdown("---")
 
 # ==================== NORMALIZAÇÃO ====================
@@ -205,7 +205,7 @@ with c4:
 st.markdown("---")
 
 # ==================== TABELA (com busca) ====================
-st.markdown(f"<h3 class='section-title'>🔧 Locais que precisam de manutenção</h3>", unsafe_allow_html=True)
+st.markdown(f"<h3 class='section-title'>Locais que precisam de manutenção</h3>", unsafe_allow_html=True)
 
 if len(locais_manut):
     # ordena: offline primeiro, depois faltando maior→menor
