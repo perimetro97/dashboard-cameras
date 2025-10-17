@@ -14,7 +14,7 @@ st.set_page_config(page_title="Dashboard de Câmeras - Grupo Perímetro",
 
 # ==================== CORES DO TEMA ====================
 AZUL = "#071E47"   # cabeçalho (site)
-LARANJA = "#FF6600"
+LARANJA = "#FF7600"
 VERDE = "#27AE60"
 VERMELHO = "#FF0000"
 CINZA_BG = "#F5F7FB"
