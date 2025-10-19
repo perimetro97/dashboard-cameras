@@ -1,269 +1,411 @@
-# streamlit_app.py
-import re
-from datetime import datetime, timedelta
+# app.py
+# Streamlit dashboard — CFTV & Alarmes (tema escuro + busca + duas seções)
 
-import pandas as pd
-import plotly.express as px
 import streamlit as st
-from openpyxl import load_workbook
+import pandas as pd
+import numpy as np
+from datetime import datetime
+from io import BytesIO
 
-# ==================== CONFIG DA PÁGINA ====================
-st.set_page_config(page_title="Dashboard de Câmeras - Grupo Perímetro",
-                   page_icon="📹",
-                   layout="wide")
+# =========================
+# CONFIG & ESTILO (Dark UI)
+# =========================
+st.set_page_config(
+    page_title="Dashboard Operacional – CFTV & Alarmes",
+    page_icon="🛡️",
+    layout="wide"
+)
 
-# ==================== CORES DO TEMA ====================
-AZUL = "#071E47"   # cabeçalho (site)
-LARANJA = "#FF6600"
-VERDE = "#27AE60"
-VERMELHO = "#FF0000"
-CINZA_BG = "#F5F7FB"
+PRIMARY_NEON = "#00E5FF"   # azul neon
+SUCCESS_NEON = "#17E66E"   # verde vibrante
+WARN_NEON    = "#FFD54A"   # amarelo vibrante
+DANGER_NEON  = "#FF4D4D"   # vermelho vibrante
+BG_DARK      = "#0D0F14"   # fundo principal
+PANEL_DARK   = "#141823"   # cards
+TEXT_LIGHT   = "#E6E8EE"   # texto padrão
 
-# ==================== CSS ====================
-st.markdown(f"""
+LOGO_PATH    = "logo_perimetro.png"   # ajuste se necessário
+PLANILHA     = "dados.xlsx"           # mesmo arquivo que você já usa
+
+CUSTOM_CSS = f"""
 <style>
-html, body, .block-container {{ background-color: white; }}
-.topbar {{ height:12px; background: linear-gradient(90deg, {AZUL} 0%, {LARANJA} 100%); border-radius: 4px; margin-bottom: 20px; }}
-
-.hdr-wrap {{ display:flex; align-items:center; gap:16px; }}
-.hdr-title {{ color:{AZUL}; font-weight:800; font-size:28px; margin:0; }}
-.hdr-sub {{ color:{AZUL}; opacity:.75; font-size:15px; margin:0; }}
-
-.metric-card {{
-    background: #fff; border:1px solid #eef0f5; border-radius: 12px;
-    padding: 18px; text-align:center;
-    box-shadow: 0 6px 18px rgba(0,0,0,0.06);
-    transition: transform .2s ease, box-shadow .2s ease;
+/* Base */
+.stApp {{
+  background: radial-gradient(1200px 800px at 15% -5%, rgba(0,229,255,0.08), transparent 60%),
+              radial-gradient(900px 600px at 100% 0%, rgba(255,77,77,0.06), transparent 40%),
+              linear-gradient(180deg, {BG_DARK} 0%, #0b0d12 100%);
+  color: {TEXT_LIGHT};
+  font-family: "Inter", system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji","Segoe UI Emoji","Segoe UI Symbol";
 }}
-.metric-card:hover {{ transform: translateY(-4px); box-shadow: 0 12px 28px rgba(0,0,0,0.10); }}
-.metric-title {{ color:#6b6b6b; font-size:13px; margin-bottom:6px; }}
-.metric-value {{ font-size:30px; font-weight:800; }}
-
-.section-title {{ color:{AZUL}; font-weight:700; margin: 4px 0 8px; }}
-
-.styled-table {{
-    border-collapse: collapse; width: 100%; font-size: 15px;
-    box-shadow: 0 6px 18px rgba(0,0,0,0.06);
-    animation: fadeIn .6s ease both;
-    border-radius: 10px; overflow: hidden;
+/* Header */
+.header {{
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 16px; position: sticky; top: 0; z-index: 999;
+  background: linear-gradient(180deg, rgba(20,24,35,0.95) 0%, rgba(20,24,35,0.85) 100%);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  backdrop-filter: blur(10px);
+  margin: -1rem -1rem 1rem -1rem;
 }}
-.styled-table thead tr {{ background-color: {AZUL}; color: #fff; text-align: left; font-weight: 700; }}
-.styled-table th, .styled-table td {{ padding: 10px 16px; }}
-.styled-table tbody tr:hover {{ background-color: #faf3eb; transform: translateX(3px); transition: all .15s ease; }}
-
-.offline-row {{ background-color: #FFE5CC; }}   /* laranja suave */
-.faltando-row {{ background-color: #FFF7E6; }}  /* amarelo claro */
-
-.status-label {{
-    font-weight:700; padding:6px 10px; border-radius:8px; display:inline-block;
-    animation: pulse 2s infinite;
+.header-left {{ display: flex; align-items: center; gap: 12px; }}
+.header-title {{
+  font-weight: 700; letter-spacing: .2px; margin: 0;
 }}
-.status-offline {{ background:{VERMELHO}; color:#fff; }}
-.status-faltando {{ background:#FFC107; color:#000; }}
-
-@keyframes pulse {{ 0%{{opacity:1;}} 50%{{opacity:.85;}} 100%{{opacity:1;}} }}
-@keyframes fadeIn {{ from{{opacity:0; transform:translateY(6px);}} to{{opacity:1; transform:translateY(0);}} }}
-.footer {{ color:#777; font-size:13px; margin-top:20px; text-align:center; }}
+.header-sub {{
+  font-size: 12px; color: #9aa3b2; margin-top: -6px;
+}}
+.logo {{
+  width: 40px; height: 40px; object-fit: contain; filter: drop-shadow(0 0 8px rgba(0,229,255,.35));
+}}
+/* Search */
+.search-wrap {{
+  position: relative; min-width: 280px; max-width: 360px;
+}}
+.search-wrap input {{
+  width: 100%; padding: 10px 36px 10px 36px; border-radius: 12px;
+  background: rgba(255,255,255,0.06); color: {TEXT_LIGHT};
+  border: 1px solid rgba(255,255,255,0.08);
+}}
+.search-icon {{
+  position: absolute; left: 10px; top: 50%; transform: translateY(-50%);
+  opacity: .75;
+}}
+.search-wrap input:focus {{
+  outline: none; box-shadow: 0 0 0 3px rgba(0,229,255,0.25);
+  border-color: {PRIMARY_NEON};
+}}
+/* Toggle buttons */
+.toggle-wrap {{
+  display: inline-flex; padding: 6px; gap: 6px; border-radius: 14px;
+  background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.08);
+}}
+.toggle-btn {{
+  padding: 8px 14px; border-radius: 10px; cursor: pointer; user-select: none;
+  transition: transform .15s ease, background .2s ease, color .2s ease;
+  color: #c8cfda; border: 1px solid transparent;
+}}
+.toggle-btn.active {{
+  background: linear-gradient(180deg, rgba(0,229,255,.18), rgba(0,229,255,.08));
+  color: {TEXT_LIGHT}; border-color: rgba(0,229,255,.35);
+  box-shadow: 0 6px 18px rgba(0,229,255,.14), inset 0 0 0 1px rgba(0,229,255,.25);
+}}
+.toggle-btn:hover {{ transform: translateY(-1px); }}
+/* Cards */
+.card {{
+  background: {PANEL_DARK}; border: 1px solid rgba(255,255,255,.06);
+  border-radius: 16px; padding: 16px; transition: transform .15s ease, box-shadow .2s ease, border .2s ease;
+  box-shadow: 0 10px 30px rgba(0,0,0,.25);
+}}
+.card:hover {{
+  transform: translateY(-2px);
+  box-shadow: 0 16px 40px rgba(0,0,0,.35);
+  border-color: rgba(0,229,255,.22);
+}}
+.metric {{
+  font-size: 28px; font-weight: 800; letter-spacing: .3px; margin: 6px 0 2px 0;
+}}
+.metric-sub {{
+  font-size: 12px; color: #9aa3b2; margin-top: -6px;
+}}
+.tag {{
+  display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; font-size: 12px; border: 1px solid transparent;
+}}
+.tag.ok {{ color: {SUCCESS_NEON}; border-color: rgba(23,230,110,.35); background: rgba(23,230,110,.12); }}
+.tag.warn {{ color: {WARN_NEON};    border-color: rgba(255,213,74,.35); background: rgba(255,213,74,.12); }}
+.tag.dng {{ color: {DANGER_NEON};   border-color: rgba(255,77,77,.35);  background: rgba(255,77,77,.12); }}
+.row {{
+  display: grid; grid-template-columns: repeat(12, 1fr); gap: 14px; width: 100%;
+}}
+.col-3 {{ grid-column: span 3; }}
+.col-4 {{ grid-column: span 4; }}
+.col-6 {{ grid-column: span 6; }}
+.col-12 {{ grid-column: span 12; }}
+.item {{
+  display:flex; align-items:center; justify-content:space-between;
+  border-top: 1px dashed rgba(255,255,255,.08); padding: 10px 0;
+}}
+.item:first-child {{ border-top: none; }}
+.name {{ font-weight: 600; }}
+.status {{ display:flex; align-items:center; gap:10px; }}
+.small {{ font-size: 12px; color:#a6afbf; }}
+hr.div {{ border:none; height:1px; background: linear-gradient(90deg, rgba(0,229,255,.0), rgba(0,229,255,.35), rgba(0,229,255,.0)); margin: 8px 0 14px 0; }}
 </style>
-""", unsafe_allow_html=True)
+"""
+st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
 
-# ==================== TOPO ====================
-st.markdown("<div class='topbar'></div>", unsafe_allow_html=True)
-c_logo, c_head = st.columns([1,5])
-with c_logo:
-    try:
-        st.image("logo.png", width=110)
-    except Exception:
-        st.write("")
-with c_head:
-    st.markdown(f"<div class='hdr-wrap'><h1 class='hdr-title'>Dashboard de Câmeras - Grupo Perímetro</h1></div>", unsafe_allow_html=True)
-    st.markdown(f"<p class='hdr-sub'>Controle de câmeras</p>", unsafe_allow_html=True)
-st.markdown("---")
+# =========================
+# CARREGAMENTO DA PLANILHA
+# =========================
+@st.cache_data(show_spinner=False)
+def load_data(planilha_path: str):
+    # Lê tudo e depois recorta as linhas 4–47 (índices 3–47 no pandas, inclusive 47)
+    df = pd.read_excel(planilha_path, header=None)
+    # Garantia de ter colunas suficientes
+    for c in range(7):
+        if c not in df.columns:
+            df[c] = np.nan
 
-# ==================== LEITURA DA PLANILHA ====================
-EXCEL_FILE = "dados.xlsx"
-try:
-    df_full = pd.read_excel(EXCEL_FILE, engine="openpyxl", header=None)  # sem header para endereçar por índice
-except Exception as e:
-    st.error(f"❌ Erro ao carregar planilha: {e}")
-    st.stop()
+    # recorte linhas 3 até 47 (inclui 47)
+    df = df.iloc[3:48, :].copy()
+    df.columns = ["A_Local", "B_TotalCam", "C_OnlineCam", "D_StatusCam",
+                  "E_TotalAlm", "F_OnlineAlm", "G_PercentAlm"]
 
-# Faixa útil: linhas 4..47 (índices 3..46), colunas A,B,C,D (0,1,2,3)
-df = df_full.iloc[3:47, 0:4].copy()
-df.columns = ["Local", "Total", "Online", "Status"]
+    # Normalizações
+    # Local como string sem espaços extras
+    df["A_Local"] = df["A_Local"].astype(str).str.strip()
 
-# ==================== DATA A55 (ROBUSTA) ====================
-def parse_excel_date(value):
-    if value is None:
-        return None
-    if isinstance(value, datetime):
-        return value
-    if isinstance(value, (int, float)):         # serial Excel
-        base = datetime(1899, 12, 30)
-        return base + timedelta(days=int(value))
-    s = str(value).strip()
-    for fmt in ("%d/%m/%Y","%d-%m-%Y","%Y-%m-%d","%d/%m/%y","%d-%m-%y"):
+    # Numéricos seguros
+    for col in ["B_TotalCam", "C_OnlineCam", "E_TotalAlm", "F_OnlineAlm"]:
+        df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0).astype(int)
+
+    # Percentual alarmes (se G estiver vazio/errado, recalcular)
+    def calc_percent(row):
+        tot, on = row["E_TotalAlm"], row["F_OnlineAlm"]
+        if tot <= 0:
+            return 0.0
+        return round((on / tot) * 100.0, 2)
+
+    # Tenta ler números da coluna G, se houver texto tipo "50% online"
+    def parse_g(v):
+        if pd.isna(v):
+            return np.nan
+        s = str(v).strip().replace(",", ".")
+        if "%" in s:
+            try:
+                return float(s.split("%")[0])
+            except:
+                return np.nan
         try:
-            return datetime.strptime(s, fmt)
+            return float(s)
         except:
-            pass
+            return np.nan
+
+    g_raw = df["G_PercentAlm"].apply(parse_g)
+    g_calc = df.apply(calc_percent, axis=1)
+    df["G_PercentAlm"] = np.where(g_raw.notna(), g_raw, g_calc)
+
+    # Derivar status de câmeras se D estiver vazio
+    def status_cam(row):
+        total, online = row["B_TotalCam"], row["C_OnlineCam"]
+        s = str(row["D_StatusCam"]).strip().upper()
+        if s and s != "NAN":
+            return s  # usar o que já veio
+        if total == 0:
+            return "SEM DADO"
+        if online == total:
+            return "OK"
+        if online > total:
+            return "EXCESSO"
+        if online == 0:
+            return "OFFLINE"
+        # faltando X
+        falt = max(total - online, 0)
+        return f"FALTANDO {falt}"
+
+    df["D_StatusCam"] = df.apply(status_cam, axis=1)
+
+    # Status alarmes categórico
+    def status_alm(p):
+        if p >= 99.99:
+            return "100%"
+        if p >= 66.0:
+            return "PARCIAL (≥66%)"
+        if p >= 50.0:
+            return "PARCIAL (50%)"
+        if p > 0:
+            return "PARCIAL (<50%)"
+        return "OFFLINE"
+
+    df["Alarmes_Status"] = df["G_PercentAlm"].apply(status_alm)
+
+    return df
+
+df = load_data(PLANILHA)
+
+# =========================
+# HELPERS UI / MÉTRICAS
+# =========================
+def metric_card(title, value, subtitle="", span_class="col-3"):
+    st.markdown(
+        f"""
+        <div class="card {span_class}">
+          <div class="small">{title}</div>
+          <div class="metric">{value}</div>
+          <div class="metric-sub">{subtitle}</div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+def tag(status_text):
+    s = status_text.upper()
+    if "OK" in s or "100%" in s:
+        return '<span class="tag ok">🟢 OK</span>'
+    if "EXCESSO" in s:
+        return '<span class="tag warn">🟡 EXCESSO</span>'
+    if "FALTANDO" in s or "PARCIAL" in s:
+        return '<span class="tag warn">🟡 PARCIAL</span>'
+    if "OFFLINE" in s or "SEM DADO" in s:
+        return '<span class="tag dng">🔴 OFFLINE</span>'
+    return '<span class="tag warn">🟡 STATUS</span>'
+
+def camera_resume(df_):
+    total_cam = df_["B_TotalCam"].sum()
+    online_cam = df_["C_OnlineCam"].sum()
+    offline_cam = max(total_cam - online_cam, 0)
+    ok_locs = (df_["D_StatusCam"].str.upper() == "OK").sum()
+    exc_locs = df_["D_StatusCam"].str.upper().str.contains("EXCESSO").sum()
+    falt_locs = df_["D_StatusCam"].str.upper().str.contains("FALTANDO|OFFLINE|SEM DADO").sum()
+    return total_cam, online_cam, offline_cam, ok_locs, exc_locs, falt_locs
+
+def alarm_resume(df_):
+    tot = df_["E_TotalAlm"].sum()
+    on  = df_["F_OnlineAlm"].sum()
+    perc_global = (on / tot * 100.0) if tot > 0 else 0.0
+    full_ok = (df_["G_PercentAlm"] >= 99.99).sum()
+    partial = ((df_["G_PercentAlm"] > 0) & (df_["G_PercentAlm"] < 99.99)).sum()
+    off     = (df_["G_PercentAlm"] == 0).sum()
+    return tot, on, perc_global, full_ok, partial, off
+
+# =========================
+# HEADER (logo + título + busca)
+# =========================
+col_logo, col_title, col_search = st.columns([0.12, 0.58, 0.30])
+with col_logo:
     try:
-        d = pd.to_datetime(s, dayfirst=True, errors="coerce")
-        if pd.notna(d):
-            return d.to_pydatetime()
+        st.image(LOGO_PATH, use_container_width=False)
     except:
-        pass
-    return None
+        st.write("")
 
-try:
-    wb = load_workbook(EXCEL_FILE, data_only=True)
-    sheet = wb.active
-    dt = parse_excel_date(sheet["A55"].value)
-    ultima_atualizacao = dt.strftime("%d/%m/%Y") if dt else "Não informada"
-except Exception:
-    ultima_atualizacao = "Erro ao ler data"
+with col_title:
+    st.markdown(
+        f"""
+        <div class="header">
+          <div class="header-left">
+            <img src="app://{LOGO_PATH}" class="logo" onerror="this.style.display='none'">
+            <div>
+              <h3 class="header-title">Dashboard Operacional – CFTV &amp; Alarmes</h3>
+              <div class="header-sub">Atualizado em {datetime.now().strftime("%d/%m/%Y %H:%M")}</div>
+            </div>
+          </div>
+          <div class="search-wrap"></div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
 
-st.markdown(f" **Última atualização:** {ultima_atualizacao}")
-st.markdown("---")
+# Como o HTML direto acima não injeta o input de busca real do Streamlit,
+# criamos a busca "discreta e bonita" com um container próprio ao lado:
+with col_search:
+    # input de pesquisa (discreto)
+    query = st.text_input(" ", placeholder="Pesquisar local...", label_visibility="collapsed")
+    # estilizar o label invisível
+    st.markdown(
+        """
+        <div class="search-icon">🔎</div>
+        """,
+        unsafe_allow_html=True
+    )
 
-# ==================== NORMALIZAÇÃO ====================
-def norm_text(x):
-    return "" if pd.isna(x) else str(x).strip()
+st.markdown("<hr class='div'/>", unsafe_allow_html=True)
 
-df["Local"] = df["Local"].apply(norm_text)
-df["Status"] = df["Status"].apply(lambda s: norm_text(s).lower())
+# =========================
+# TOGGLE: CÂMERAS | ALARMES
+# =========================
+left, mid, right = st.columns([0.4, 0.2, 0.4])
+with mid:
+    # usamos session_state para lembrar a aba selecionada
+    if "tab" not in st.session_state:
+        st.session_state.tab = "Câmeras"
 
-def is_offline_text(s: str) -> bool:
-    if not s: return False
-    s2 = s.lower()
-    # aceita variações: offline, off-line, off line, off, off_line, sem câmeras
-    return bool(re.search(r"\boff\s*-?\s*line\b|\boffline\b|\boff\b|sem\s*c[aâ]meras", s2))
+    c1, c2 = st.columns(2)
+    with c1:
+        if st.button("📷 Câmeras", use_container_width=True, type="primary" if st.session_state.tab=="Câmeras" else "secondary"):
+            st.session_state.tab = "Câmeras"
+    with c2:
+        if st.button("🚨 Alarmes", use_container_width=True, type="primary" if st.session_state.tab=="Alarmes" else "secondary"):
+            st.session_state.tab = "Alarmes"
 
-def parse_int_safe(x):
-    try:
-        if pd.isna(x): return None
-        if isinstance(x,(int,float)): return int(x)
-        m = re.search(r"(\d+)", str(x).replace(".", "").replace(",", ""))
-        return int(m.group(1)) if m else None
-    except:
-        return None
+st.markdown("<hr class='div'/>", unsafe_allow_html=True)
 
-# Online: se C for número → usa; se contiver “offline” → 0
-def parse_online(cell_c, status_d):
-    n = parse_int_safe(cell_c)
-    if n is not None:
-        return max(n, 0)
-    # se texto e indica offline → 0
-    if is_offline_text(norm_text(cell_c)) or is_offline_text(status_d):
-        return 0
-    return 0  # fallback
-
-df["Total"]  = df["Total"].apply(lambda x: parse_int_safe(x) or 0)
-df["Online"] = [parse_online(c, s) for c, s in zip(df["Online"], df["Status"])]
-
-# “Sem câmeras” → força total=0 e online=0
-sem_cam_mask = df["Status"].str.contains("sem c", na=False)
-df.loc[sem_cam_mask, ["Total","Online"]] = 0
-
-# Offline calculado por linha
-df["Offline_calc"] = (df["Total"] - df["Online"]).clip(lower=0)
-
-# Badge de status para a tabela:
-# - Offline (vermelho) quando total>0 e online==0
-# - senão Faltando X (amarelo) quando X>0
-# - linhas com X==0 não aparecem na tabela
-def status_badge(total, online, status_text, offline_x):
-    if total > 0 and online == 0:
-        return "offline"
-    if offline_x > 0:
-        return f"faltando {offline_x}"
-    return "ok"
-
-df["Badge"] = [status_badge(t, o, s, x) for t, o, s, x in zip(df["Total"], df["Online"], df["Status"], df["Offline_calc"])]
-
-# ==================== AGREGADOS ====================
-total_cameras = int(df["Total"].sum())
-cameras_online = int(df["Online"].sum())
-cameras_offline = int(df["Offline_calc"].sum())  # é o que alimenta cards e gráfico
-locais_manut = df[(df["Badge"] != "ok") & (df["Local"] != "")].copy()
-
-# ==================== CARDS ====================
-c1, c2, c3, c4 = st.columns(4)
-with c1:
-    st.markdown(f"<div class='metric-card'><div class='metric-title'>Total de Câmeras</div>"
-                f"<div class='metric-value' style='color:{AZUL}'>{total_cameras}</div></div>", unsafe_allow_html=True)
-with c2:
-    st.markdown(f"<div class='metric-card'><div class='metric-title'>Câmeras Online</div>"
-                f"<div class='metric-value' style='color:{VERDE}'>{cameras_online}</div></div>", unsafe_allow_html=True)
-with c3:
-    st.markdown(f"<div class='metric-card'><div class='metric-title'>Câmeras Offline</div>"
-                f"<div class='metric-value' style='color:{VERMELHO}'>{cameras_offline}</div></div>", unsafe_allow_html=True)
-with c4:
-    st.markdown(f"<div class='metric-card'><div class='metric-title'>Locais em Manutenção</div>"
-                f"<div class='metric-value' style='color:{LARANJA}'>{len(locais_manut)}</div></div>", unsafe_allow_html=True)
-
-st.markdown("---")
-
-# ==================== TABELA (com busca) ====================
-st.markdown(f"<h3 class='section-title'>Locais que precisam de manutenção</h3>", unsafe_allow_html=True)
-
-if len(locais_manut):
-    # ordena: offline primeiro, depois faltando maior→menor
-    locais_manut["is_offline"] = locais_manut["Badge"].apply(lambda b: 1 if b == "offline" else 0)
-    # extrai X de "faltando X"
-    locais_manut["faltandoX"] = locais_manut["Offline_calc"]
-    locais_manut = locais_manut.sort_values(by=["is_offline","faltandoX"], ascending=[False, False])
-
-    filtro = st.text_input("🔍 Buscar local:", "").strip().lower()
-    if filtro:
-        locais_manut = locais_manut[locais_manut["Local"].str.lower().str.contains(filtro)]
-
-    # monta HTML
-    html = "<table class='styled-table'><thead><tr><th>Local</th><th>Status</th></tr></thead><tbody>"
-    for _, r in locais_manut.iterrows():
-        if r["Badge"] == "offline":
-            cls = "offline-row"
-            badge = "<span class='status-label status-offline'>Offline</span>"
-        else:
-            cls = "faltando-row"
-            badge = f"<span class='status-label status-faltando'>Faltando {int(r['faltandoX'])}</span>"
-        html += f"<tr class='{cls}'><td>{r['Local']}</td><td>{badge}</td></tr>"
-    html += "</tbody></table>"
-    st.markdown(html, unsafe_allow_html=True)
+# =========================
+# FILTRO DE BUSCA (sempre)
+# =========================
+if query and str(query).strip():
+    mask = df["A_Local"].str.contains(query.strip(), case=False, na=False)
+    dff = df[mask].copy()
 else:
-    st.success("✅ Nenhum local em manutenção no momento.")
+    dff = df.copy()
 
-st.markdown("---")
+# =========================
+# SEÇÃO — CÂMERAS
+# =========================
+def render_cameras(dbase):
+    st.markdown("### 📷 Câmeras")
+    total_cam, online_cam, offline_cam, ok_locs, exc_locs, falt_locs = camera_resume(dbase)
 
-# ==================== GRÁFICOS ====================
-col_bar, col_pie = st.columns([2, 1])
+    c_a, c_b, c_c, c_d = st.columns(4)
+    with c_a: metric_card("Total de Câmeras", f"{total_cam:,}".replace(",", "."), "Soma de todos os locais")
+    with c_b: metric_card("Online", f"{online_cam:,}".replace(",", "."), "Câmeras operando",)
+    with c_c: metric_card("Offline / Faltando", f"{offline_cam:,}".replace(",", "."), "Diferença total – online")
+    with c_d: metric_card("Locais: OK / Excesso / Faltando", f"{ok_locs} / {exc_locs} / {falt_locs}", "Status por local")
 
-with col_bar:
-    st.markdown(f"<h3 class='section-title'>Online vs Offline</h3>", unsafe_allow_html=True)
-    df_chart = pd.DataFrame({"Status":["Online","Offline"],
-                             "Quantidade":[cameras_online, cameras_offline]})
-    fig = px.bar(df_chart, x="Status", y="Quantidade", text="Quantidade",
-                 color="Status",
-                 color_discrete_map={"Online": VERDE, "Offline": VERMELHO},
-                 height=420)
-    fig.update_traces(textposition="outside",
-                      hovertemplate="<b>%{x}</b><br>%{y} câmeras")
-    fig.update_layout(xaxis_title="", yaxis_title="Quantidade de câmeras",
-                      plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
-                      transition={"duration":400})
-    st.plotly_chart(fig, use_container_width=True)
+    st.markdown("<div class='card col-12'>", unsafe_allow_html=True)
+    st.markdown("**Locais e status (câmeras):**")
+    for _, r in dbase.sort_values("A_Local").iterrows():
+        st.markdown(
+            f"""
+            <div class="item">
+              <div class="name">📍 {r['A_Local']}</div>
+              <div class="status">
+                <span class="small">Total: {r['B_TotalCam']} · Online: {r['C_OnlineCam']}</span>
+                {tag(r['D_StatusCam'])}
+              </div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+    st.markdown("</div>", unsafe_allow_html=True)
 
-with col_pie:
-    st.markdown(f"<h3 class='section-title'>Proporção Geral</h3>", unsafe_allow_html=True)
-    df_pie = pd.DataFrame({"Categoria":["Funcionando","Manutenção"],
-                           "Quantidade":[cameras_online, cameras_offline]})
-    pie = px.pie(df_pie, values="Quantidade", names="Categoria",
-                 color="Categoria",
-                 color_discrete_map={"Funcionando": VERDE, "Manutenção": LARANJA},
-                 hole=0.45)
-    pie.update_traces(textinfo="percent+label", pull=[0, 0.08])
-    pie.update_layout(showlegend=False, height=420)
-    st.plotly_chart(pie, use_container_width=True)
+# =========================
+# SEÇÃO — ALARMES
+# =========================
+def render_alarms(dbase):
+    st.markdown("### 🚨 Alarmes")
+    tot, on, perc_global, full_ok, partial, off = alarm_resume(dbase)
 
-# ==================== RODAPÉ ====================
-st.markdown("<div class='footer'>© Grupo Perímetro & Monitoramento - 2025</div>", unsafe_allow_html=True)
+    a, b, c, d = st.columns(4)
+    with a: metric_card("Centrais de Alarme (Total)", f"{tot:,}".replace(",", "."), "Soma geral")
+    with b: metric_card("Centrais Online", f"{on:,}".replace(",", "."), "Operando agora")
+    with c: metric_card("Percentual Médio", f"{perc_global:.1f}%", "Média ponderada geral")
+    with d: metric_card("Locais: 100% / Parcial / Offline", f"{full_ok} / {partial} / {off}", "Status por local")
+
+    st.markdown("<div class='card col-12'>", unsafe_allow_html=True)
+    st.markdown("**Locais e status (alarmes):**")
+    for _, r in dbase.sort_values("A_Local").iterrows():
+        perc = r["G_PercentAlm"]
+        status = r["Alarmes_Status"]
+        st.markdown(
+            f"""
+            <div class="item">
+              <div class="name">📍 {r['A_Local']}</div>
+              <div class="status">
+                <span class="small">Total: {r['E_TotalAlm']} · Online: {r['F_OnlineAlm']} · {perc:.0f}%</span>
+                {tag('OK' if status=='100%' else ('OFFLINE' if status=='OFFLINE' else 'PARCIAL'))}
+              </div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+    st.markdown("</div>", unsafe_allow_html=True)
+
+# =========================
+# RENDER DE ACORDO COM ABA
+# =========================
+if st.session_state.tab == "Câmeras":
+    render_cameras(dff)
+else:
+    render_alarms(dff)
+
+# Rodapé sutil
+st.markdown("<hr class='div'/>", unsafe_allow_html=True)
+st.caption("Grupo Perímetro — Painel Operacional • v1.0 (Câmeras + Alarmes + Busca)")
