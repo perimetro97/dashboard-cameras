@@ -1,5 +1,5 @@
 # =========================================================
-# Dashboard Operacional – Grupo Perímetro (v5.6)
+# Dashboard Operacional – Grupo Perímetro (v5.6.2)
 # CFTV & Alarmes • Visual Pro •
 # =========================================================
 import os, requests
@@ -119,7 +119,6 @@ st.markdown(f"""
 
 # ------------------ LOGO (repositório/arquivo) ------------------
 def load_logo_bytes() -> bytes | None:
-    # 1) Arquivo local
     for p in LOGO_FILE_CANDIDATES:
         if os.path.exists(p):
             try:
@@ -127,7 +126,6 @@ def load_logo_bytes() -> bytes | None:
                     return f.read()
             except Exception:
                 pass
-    # 2) URL raw do GitHub
     try:
         r = requests.get(LOGO_URL_RAW, timeout=6)
         if r.ok:
@@ -147,43 +145,35 @@ def _to_int(x):
 @st.cache_data(show_spinner=False)
 def load_data(path: str) -> pd.DataFrame:
     raw = pd.read_excel(path, header=None)
-    raw = raw.dropna(how="all").iloc[:, 0:7]  # A..G
-    raw.columns = ["Local","Cam_Total","Cam_Online","Cam_Status",
-                   "Alm_Total","Alm_Online","Alm_Status"]
+    raw = raw.dropna(how="all").iloc[:, 0:7]
+    raw.columns = ["Local","Cam_Total","Cam_Online","Cam_Status","Alm_Total","Alm_Online","Alm_Status"]
     raw = raw.dropna(subset=["Local"])
-    # remove linhas de total/relatorio
     raw = raw[~raw["Local"].astype(str).str.contains("TOTAL|RELATÓRIO|RELATORIO", case=False, na=False)]
-
     for c in ["Cam_Total","Cam_Online","Alm_Total","Alm_Online"]:
         raw[c] = raw[c].apply(_to_int)
-
-    # Auxiliares
     raw["Cam_Falta"] = (raw["Cam_Total"] - raw["Cam_Online"]).clip(lower=0)
     raw["Alm_Falta"] = (raw["Alm_Total"] - raw["Alm_Online"]).clip(lower=0)
     raw["Cam_OfflineBool"] = (raw["Cam_Total"]>0) & (raw["Cam_Online"]==0)
     raw["Alm_OfflineBool"] = (raw["Alm_Total"]>0) & (raw["Alm_Online"]==0)
-
-    # Status amigáveis
     def cam_status(r):
         if r["Cam_Total"]==0: return "SEM CÂMERAS"
         if r["Cam_Online"]==0: return "OFFLINE"
         if r["Cam_Online"]<r["Cam_Total"]: return f"FALTANDO {int(r['Cam_Falta'])}"
         return "OK"
     raw["Cam_Status"] = raw.apply(cam_status, axis=1)
-
     def alm_status(r):
         if r["Alm_Total"]==0: return "SEM ALARME"
         if r["Alm_Online"]==0: return "OFFLINE"
         if r["Alm_Online"]<r["Alm_Total"]: return f"PARCIAL ({int(r['Alm_Online'])}/{int(r['Alm_Total'])})"
         return "100%"
     raw["Alm_Status"] = raw.apply(alm_status, axis=1)
-
     return raw.reset_index(drop=True)
 
 def chip(texto, tipo):
     cls = "ok" if tipo=="ok" else ("warn" if tipo=="warn" else "off")
     return f"<span class='chip {cls}'>{texto}</span>"
 
+# ------------------ GRAFICO ------------------
 def bar_values(values: dict, title: str):
     dfc = pd.DataFrame({
         "Categoria": list(values.keys()),
@@ -220,20 +210,8 @@ def bar_values(values: dict, title: str):
             "displaylogo": False,
             "toImageFilename": f"grafico_{title.lower().replace(' ','_')}",
             "modeBarButtonsToAdd": ["toImage"]
-        }
-    )
-    fig.update_traces(textposition="outside", cliponaxis=False)
-    fig.update_layout(title=title, height=360,
-                      margin=dict(l=10,r=10,t=50,b=20),
-                      paper_bgcolor=CLR_PANEL, plot_bgcolor=CLR_PANEL,
-                      font=dict(size=13), showlegend=False,
-                      xaxis_title=None, yaxis_title="Quantidade")
-    st.plotly_chart(
-        fig,
-        use_container_width=True,
-        config={"displaylogo": False,
-                "toImageFilename": f"grafico_{title.lower().replace(' ','_')}",
-                "modeBarButtonsToAdd":["toImage"]}
+        },
+        key=f"chart_{title.replace(' ','_')}"
     )
 
 # ------------------ HEADER ------------------
@@ -273,7 +251,6 @@ def tab_button(label, tab_name, key):
     active = (st.session_state.tab == tab_name)
     if st.button(label, key=key):
         st.session_state.tab = tab_name
-    # classe ativa via JS
     js = f"""
     <script>
       const btns = Array.from(window.parent.document.querySelectorAll('button'));
@@ -299,80 +276,6 @@ if df.empty:
 has_query = bool(query.strip())
 dfv = df if not has_query else df[df["Local"].str.contains(query.strip(), case=False, na=False)]
 
-# ------------------ RENDER: CÂMERAS ------------------
-def render_cameras(dfx: pd.DataFrame):
-    base = dfx[dfx["Cam_Total"]>0]
-    st.markdown("#### 📷 Câmeras")
-
-    total = int(base["Cam_Total"].sum())
-    online = int(base["Cam_Online"].sum())
-    offline = max(total - online, 0)
-    locais_manut = int(((base["Cam_OfflineBool"]) | (base["Cam_Falta"]>0)).sum())
-
-    c1,c2,c3,c4 = st.columns(4)
-    c1.markdown(f"<div class='card'><div class='metric-sub'>Total</div><div class='metric'>{total}</div></div>", unsafe_allow_html=True)
-    c2.markdown(f"<div class='card'><div class='metric-sub'>Online</div><div class='metric' style='color:{CLR_GREEN};'>{online}</div></div>", unsafe_allow_html=True)
-    c3.markdown(f"<div class='card'><div class='metric-sub'>Offline</div><div class='metric' style='color:{CLR_RED};'>{offline}</div></div>", unsafe_allow_html=True)
-    c4.markdown(f"<div class='card'><div class='metric-sub'>Locais p/ manutenção</div><div class='metric' style='color:{CLR_ORANGE};'>{locais_manut}</div></div>", unsafe_allow_html=True)
-
-    rows = base.copy()
-    rows["__prio"] = np.where(rows["Cam_OfflineBool"], 2, np.where(rows["Cam_Falta"]>0, 1, 0))
-    rows = rows[rows["__prio"]>0].sort_values(["__prio","Cam_Falta"], ascending=[False, False])
-
-    st.markdown("#### Locais para manutenção / offline")
-    if rows.empty and not has_query:
-        st.info("Nenhum local em manutenção. Use a busca para visualizar locais 100% OK.")
-    for _, r in rows.iterrows():
-        status = "OFFLINE" if r["Cam_OfflineBool"] else f"FALTANDO {int(r['Cam_Falta'])}"
-        cls = "offline" if "OFFLINE" in status else ""
-        st.markdown(
-            f"<div class='local-card {cls}'>"
-            f"<div class='local-title'>📍 {r['Local']} — "
-            f"{chip(status, 'off' if 'OFFLINE' in status else 'warn')}</div>"
-            f"<div class='local-info'>Total: {r['Cam_Total']} • Online: {r['Cam_Online']}</div>"
-            f"</div>", unsafe_allow_html=True
-        )
-
-    bar_values({"Online": online, "Offline": offline, "Locais p/ manutenção": locais_manut},
-               "Resumo de Câmeras")
-
-# ------------------ RENDER: ALARMES ------------------
-def render_alarms(dfx: pd.DataFrame):
-    base = dfx[dfx["Alm_Total"]>0]
-    st.markdown("#### 🚨 Alarmes")
-
-    total = int(base["Alm_Total"].sum())
-    online = int(base["Alm_Online"].sum())
-    offline = max(total - online, 0)
-    locais_manut = int(((base["Alm_OfflineBool"]) | (base["Alm_Falta"]>0)).sum())
-
-    a1,a2,a3,a4 = st.columns(4)
-    a1.markdown(f"<div class='card'><div class='metric-sub'>Centrais Totais</div><div class='metric'>{total}</div></div>", unsafe_allow_html=True)
-    a2.markdown(f"<div class='card'><div class='metric-sub'>Online</div><div class='metric' style='color:{CLR_GREEN};'>{online}</div></div>", unsafe_allow_html=True)
-    a3.markdown(f"<div class='card'><div class='metric-sub'>Offline</div><div class='metric' style='color:{CLR_RED};'>{offline}</div></div>", unsafe_allow_html=True)
-    a4.markdown(f"<div class='card'><div class='metric-sub'>Locais p/ manutenção</div><div class='metric' style='color:{CLR_ORANGE};'>{locais_manut}</div></div>", unsafe_allow_html=True)
-
-    rows = base.copy()
-    rows["__prio"] = np.where(rows["Alm_OfflineBool"], 2, np.where(rows["Alm_Falta"]>0, 1, 0))
-    rows = rows[rows["__prio"]>0].sort_values(["__prio","Alm_Falta"], ascending=[False, False])
-
-    st.markdown("#### Locais para manutenção / offline")
-    if rows.empty and not has_query:
-        st.info("Nenhum local em manutenção. Use a busca para visualizar locais 100%.")
-    for _, r in rows.iterrows():
-        status = "OFFLINE" if r["Alm_OfflineBool"] else f"PARCIAL ({int(r['Alm_Online'])}/{int(r['Alm_Total'])})"
-        cls = "offline" if "OFFLINE" in status else ""
-        st.markdown(
-            f"<div class='local-card {cls}'>"
-            f"<div class='local-title'>📍 {r['Local']} — "
-            f"{chip(status, 'off' if 'OFFLINE' in status else 'warn')}</div>"
-            f"<div class='local-info'>Total: {r['Alm_Total']} • Online: {r['Alm_Online']}</div>"
-            f"</div>", unsafe_allow_html=True
-        )
-
-    bar_values({"Online": online, "Offline": offline, "Locais p/ manutenção": locais_manut},
-               "Resumo de Alarmes")
-
 # ------------------ RENDER: GERAL ------------------
 def render_geral(dfx: pd.DataFrame):
     st.markdown("#### 📊 Geral (Câmeras + Alarmes)")
@@ -382,6 +285,10 @@ def render_geral(dfx: pd.DataFrame):
     alm_tot, alm_on = int(alm["Alm_Total"].sum()), int(alm["Alm_Online"].sum())
     cam_off, alm_off = cam_tot-cam_on, alm_tot-alm_on
 
+    # Novo: contar locais em manutenção (câmeras ou alarmes)
+    locais_manut = int(((dfx["Cam_OfflineBool"]) | (dfx["Cam_Falta"]>0) |
+                        (dfx["Alm_OfflineBool"]) | (dfx["Alm_Falta"]>0)).sum())
+
     g1,g2,g3,g4,g5,g6 = st.columns(6)
     g1.markdown(f"<div class='card'><div class='metric-sub'>Câmeras Online</div><div class='metric' style='color:{CLR_GREEN};'>{cam_on}</div></div>", unsafe_allow_html=True)
     g2.markdown(f"<div class='card'><div class='metric-sub'>Alarmes Online</div><div class='metric' style='color:{CLR_GREEN};'>{alm_on}</div></div>", unsafe_allow_html=True)
@@ -390,8 +297,10 @@ def render_geral(dfx: pd.DataFrame):
     g5.markdown(f"<div class='card'><div class='metric-sub'>Câmeras Offline</div><div class='metric' style='color:{CLR_RED};'>{cam_off}</div></div>", unsafe_allow_html=True)
     g6.markdown(f"<div class='card'><div class='metric-sub'>Alarmes Offline</div><div class='metric' style='color:{CLR_RED};'>{alm_off}</div></div>", unsafe_allow_html=True)
 
-    bar_values({"Online": cam_on+alm_on, "Offline": cam_off+alm_off, "Locais p/ manutenção": 0},
-               "Resumo Geral")
+    bar_values(
+        {"Online": cam_on+alm_on, "Offline": cam_off+alm_off, "Locais p/ manutenção": locais_manut},
+        "Resumo Geral"
+    )
 
 # ------------------ DISPATCH ------------------
 tab = st.session_state.tab
@@ -402,4 +311,4 @@ elif tab == "Alarmes":
 else:
     render_geral(dfv)
 
-st.caption("© Grupo Perímetro • Dashboard Operacional v5.6")
+st.caption("© Grupo Perímetro • Dashboard Operacional v5.6.2")
