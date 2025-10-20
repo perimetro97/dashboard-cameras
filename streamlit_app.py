@@ -215,7 +215,11 @@ def build_pdf_bytes(df: pd.DataFrame) -> bytes:
 col_logo, col_title, col_search = st.columns([0.12, 0.58, 0.30])
 with col_logo:
     st.markdown("<div class='logo-card'>", unsafe_allow_html=True)
-    st.image(get_logo_source(), use_container_width=True)
+    try:
+        st.image("https://raw.githubusercontent.com/perimetro97/dashboard-cameras/main/logo.png",
+                 use_container_width=True)
+    except Exception as e:
+        st.warning("⚠️ Logo não encontrada, mas o sistema continua funcionando.")
     st.markdown("</div>", unsafe_allow_html=True)
 
 with col_title:
