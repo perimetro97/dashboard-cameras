@@ -102,40 +102,42 @@ st.markdown(f"""
 </style>
 """, unsafe_allow_html=True)
 
-# ---------------- LOGO ROBUSTA ----------------
-def load_logo_bytes():
-    import requests
-    possible_paths = [
+# --- LOGO: carregamento à prova de falhas (local ou URL do GitHub) ---
+from PIL import Image
+from io import BytesIO
+import os
+
+GITHUB_LOGO_URL = "https://raw.githubusercontent.com/perimetro97/dashboard-cameras/main/logo_perimetro.png"
+
+def get_logo_obj():
+    """Retorna um objeto PIL.Image OU uma URL (string) para usar no st.image."""
+    # tenta localmente em caminhos comuns do Streamlit Cloud
+    candidates = [
         "logo_perimetro.png",
         "./logo_perimetro.png",
         "/app/logo_perimetro.png",
         "/app/dashboard-cameras/logo_perimetro.png",
         "/mount/src/dashboard-cameras/logo_perimetro.png",
     ]
-    # tenta localizar localmente
-    for p in possible_paths:
+    for p in candidates:
         if os.path.exists(p):
             try:
-                img = Image.open(p).convert("RGBA")
-                buf = BytesIO()
-                img.save(buf, format="PNG")
-                buf.seek(0)
-                return buf.read()
+                return Image.open(p).convert("RGBA")   # retorna PIL.Image
             except Exception:
                 pass
+    # fallback: usa URL crua do GitHub (st.image aceita URL diretamente)
+    return GITHUB_LOGO_URL
 
-    # fallback: tenta baixar direto do GitHub
+# ---------------- HEADER (use SEM 'logo_bytes') ----------------
+col_logo, col_title, col_search = st.columns([0.12, 0.58, 0.30])
+with col_logo:
+    st.markdown("<div class='logo-card'>", unsafe_allow_html=True)
+    logo_obj = get_logo_obj()
     try:
-        url = "https://raw.githubusercontent.com/perimetro97/dashboard-cameras/main/logo_perimetro.png"
-        r = requests.get(url, timeout=10)
-        if r.status_code == 200:
-            return r.content
+        st.image(logo_obj, use_container_width=True)   # aceita PIL.Image ou URL
     except Exception:
-        pass
-
-    # se nada der certo, retorna None
-    return None
-
+        st.write("**Grupo Perímetro**")
+    st.markdown("</div>", unsafe_allow_html=True)
 # ---------------- LEITURA DA PLANILHA ----------------
 def to_int(x):
     if pd.isna(x): return 0
