@@ -1,8 +1,8 @@
 # =========================================================
-# Dashboard Operacional – Grupo Perímetro (v3.3)
+# Dashboard Operacional – Grupo Perímetro (v3.4)
 # CFTV & Alarmes • logo.png • leitura robusta • gráficos • PDF
 # =========================================================
-import os, re, glob
+import os
 from io import BytesIO
 from datetime import datetime
 
@@ -10,7 +10,6 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.express as px
-from PIL import Image
 from fpdf import FPDF
 
 # ------------- CONFIG GERAL -------------
@@ -18,6 +17,7 @@ st.set_page_config(page_title="Dashboard Operacional – CFTV & Alarmes",
                    page_icon="🛡️", layout="wide")
 
 PLANILHA = "dados.xlsx"
+LOGO_URL = "https://raw.githubusercontent.com/perimetro97/dashboard-cameras/main/logo.png"
 
 # Paleta
 CLR_BG     = "#F4F5F7"
@@ -45,18 +45,18 @@ st.markdown(f"""
   .tag-ok   {{ color:{CLR_GREEN};  background:rgba(23,201,100,.12); }}
   .tag-warn {{ color:{CLR_ORANGE}; background:rgba(243,112,33,.12); }}
   .tag-off  {{ color:{CLR_RED};    background:rgba(229,72,77,.12); }}
+  /* botões das abas mais próximos */
+  .btn-row .stButton > button {{ margin-right:8px; margin-left:0; padding:8px 14px; border-radius:10px; }}
 </style>
 """, unsafe_allow_html=True)
 
 # ------------- LOGO (logo.png) -------------
 def get_logo_source():
-    # tenta localmente
-    for p in ["logo.png", "./logo.png", "/app/logo.png", "/app/dashboard-cameras/logo.png",
-              "/mount/src/dashboard-cameras/logo.png"]:
+    for p in ["logo.png", "./logo.png", "/app/logo.png",
+              "/app/dashboard-cameras/logo.png", "/mount/src/dashboard-cameras/logo.png"]:
         if os.path.exists(p):
             return p
-    # fallback URL crua do GitHub
-    return "https://raw.githubusercontent.com/perimetro97/dashboard-cameras/main/logo.png"
+    return LOGO_URL  # fallback URL crua do GitHub
 
 # ------------- HELPERS -------------
 def _to_int(x):
@@ -68,69 +68,49 @@ def _to_int(x):
 
 @st.cache_data(show_spinner=False)
 def load_data(xlsx_path: str) -> pd.DataFrame:
-    """
-    Lê a planilha 'dados.xlsx' e tenta mapear as colunas automaticamente.
-    Esperado: A Local | B Cam_Total | C Cam_Online | D Cam_Status | E Alm_Total | F Alm_Online | G Alm_Status.
-    Ignora cabeçalhos, linhas de totais e linhas vazias.
-    """
-    # Tentativa 1: já com header=None
-    xl = pd.read_excel(xlsx_path, header=None)
-    # Procura primeira linha de dados onde col A tem texto e B/C/E/F são números ou vazios
-    def looks_like_row(row):
-        a = str(row[0]).strip()
-        has_name = (a != "nan" and len(a) > 0 and "TOTAL" not in a.upper())
-        # Pelo menos uma métrica numérica em B,C,E,F
+    """Lê a planilha e mapeia as colunas A..G, ignorando cabeçalhos e linhas de total."""
+    raw = pd.read_excel(xlsx_path, header=None)
+    # acha primeira linha com possível dado (A com texto, pelo menos um número em B,C,E,F)
+    def looks_like_row(r):
+        a = str(r[0]).strip()
+        if a == "" or a.lower() == "nan" or "TOTAL" in a.upper(): return False
         nums = 0
         for j in [1,2,4,5]:
             try:
-                float(str(row[j]).replace(",", "."))
+                float(str(r[j]).replace(",", "."))
                 nums += 1
             except:
                 pass
-        return has_name and nums >= 1
+        return nums >= 1
+    start = None
+    for i in range(min(25, len(raw))):
+        if looks_like_row(raw.iloc[i, :]): start = i; break
+    if start is None: start = 0
 
-    # encontra primeira linha válida
-    start_idx = None
-    for i in range(min(20, len(xl))):  # procura nos 20 primeiros
-        if looks_like_row(xl.iloc[i, :]):
-            start_idx = i
-            break
-    if start_idx is None:
-        start_idx = 0
+    df = raw.iloc[start:, 0:7].copy()
+    df.columns = ["Local","Cam_Total","Cam_Online","Cam_Status",
+                  "Alm_Total","Alm_Online","Alm_Status"]
+    df = df.dropna(subset=["Local"])
+    df["Local"] = df["Local"].astype(str).str.strip()
+    df = df[~df["Local"].str.contains("TOTAL|RELATÓRIO|RELATORIO", case=False, na=False)]
 
-    data = xl.iloc[start_idx:, 0:7].copy()
-    data.columns = ["Local","Cam_Total","Cam_Online","Cam_Status",
-                    "Alm_Total","Alm_Online","Alm_Status"]
-
-    # limpeza básica
-    data = data.dropna(subset=["Local"])
-    data["Local"] = data["Local"].astype(str).str.strip()
-    # remove linhas resumo
-    data = data[~data["Local"].str.contains("TOTAL|RELATÓRIO|RELATORIO", case=False, na=False)]
-
-    # números
     for c in ["Cam_Total","Cam_Online","Alm_Total","Alm_Online"]:
-        data[c] = data[c].apply(_to_int)
+        df[c] = df[c].apply(_to_int)
 
     # normaliza status de câmeras
     def cam_status(row):
         s = str(row["Cam_Status"]).strip().upper()
         tot, on = row["Cam_Total"], row["Cam_Online"]
-        # se já vem marcado
         if any(k in s for k in ["OK","EXCESSO","FALTANDO","OFFLINE","SEM CÂMERAS","SEM CAMERAS"]):
             return s.replace("CAMERAS","CÂMERAS")
         if tot == 0: return "SEM CÂMERAS"
-        if on >= tot: return "OK" if on == tot else "EXCESSO"
         if on == 0: return "OFFLINE"
+        if on >= tot: return "OK" if on == tot else "EXCESSO"
         return f"FALTANDO {max(tot-on,0)}"
-    data["Cam_Status"] = data.apply(cam_status, axis=1)
+    df["Cam_Status"] = df.apply(cam_status, axis=1)
 
     # percentuais e status de alarmes
-    def alm_percent(row):
-        t, o = row["Alm_Total"], row["Alm_Online"]
-        return 0.0 if t <= 0 else round(100.0*o/t, 2)
-    data["Alm_Percent"] = data.apply(alm_percent, axis=1)
-
+    df["Alm_Percent"] = df.apply(lambda r: 0.0 if r["Alm_Total"]<=0 else round(100.0*r["Alm_Online"]/r["Alm_Total"],2), axis=1)
     def alm_status(row):
         s = str(row["Alm_Status"]).strip().upper()
         if "100%" in s: return "100%"
@@ -139,9 +119,14 @@ def load_data(xlsx_path: str) -> pd.DataFrame:
         if p >= 99.9: return "100%"
         if p > 0: return "PARCIAL"
         return "OFFLINE"
-    data["Alm_Status"] = data.apply(alm_status, axis=1)
+    df["Alm_Status"] = df.apply(alm_status, axis=1)
 
-    return data.reset_index(drop=True)
+    # campos auxiliares
+    df["Cam_Falta"] = (df["Cam_Total"] - df["Cam_Online"]).clip(lower=0)
+    df["Alm_Falta"] = (df["Alm_Total"] - df["Alm_Online"]).clip(lower=0)
+    df["Cam_OfflineBool"] = (df["Cam_Total"]>0) & (df["Cam_Online"]==0)
+    df["Alm_OfflineBool"] = (df["Alm_Total"]>0) & (df["Alm_Online"]==0)
+    return df.reset_index(drop=True)
 
 # UI helpers
 def card_local(local, status, info, cor="ok"):
@@ -151,19 +136,15 @@ def card_local(local, status, info, cor="ok"):
         f"<div class='sub' style='margin-top:6px;'>{info}</div></div>", unsafe_allow_html=True
     )
 
-def pie_online_manutencao(total, online, title):
-    manut = max(total - online, 0)
-    fig = px.pie(names=["Online","Manutenção"], values=[online, manut], hole=0.55)
-    fig.update_traces(textinfo="percent+label",
-                      marker=dict(colors=[CLR_GREEN, CLR_ORANGE]))
-    fig.update_layout(title=title, showlegend=False, margin=dict(l=10,r=10,t=40,b=10),
-                      height=320, paper_bgcolor=CLR_PANEL, plot_bgcolor=CLR_PANEL)
-    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
-
-def bar_online_offline(df_counts, title):
-    fig = px.bar(df_counts, x="Categoria", y="Quantidade", text="Quantidade",
+def bar_single(values: dict, title: str):
+    """Barra com 3 categorias (Online, Offline, Locais p/ manutenção)."""
+    dfc = pd.DataFrame({
+        "Categoria": list(values.keys()),
+        "Quantidade": list(values.values())
+    })
+    fig = px.bar(dfc, x="Categoria", y="Quantidade", text="Quantidade",
                  color="Categoria",
-                 color_discrete_map={"Online":CLR_GREEN,"Manutenção":CLR_ORANGE,"Offline":CLR_RED})
+                 color_discrete_map={"Online":CLR_GREEN, "Offline":CLR_RED, "Locais p/ manutenção":CLR_ORANGE})
     fig.update_traces(textposition="outside")
     fig.update_layout(title=title, height=340, margin=dict(l=10,r=10,t=40,b=10),
                       paper_bgcolor=CLR_PANEL, plot_bgcolor=CLR_PANEL, showlegend=False)
@@ -183,12 +164,14 @@ def build_pdf_bytes(df: pd.DataFrame) -> bytes:
     alm = df[df["Alm_Total"]>0]
     cam_tot, cam_on = int(cam["Cam_Total"].sum()), int(cam["Cam_Online"].sum())
     alm_tot, alm_on = int(alm["Alm_Total"].sum()), int(alm["Alm_Online"].sum())
+    cam_off, alm_off = max(cam_tot-cam_on,0), max(alm_tot-alm_on,0)
 
     pdf = PDF()
     pdf.add_page()
     pdf.set_font("Helvetica", "", 11)
-    pdf.cell(0, 8, f"Câmeras: {cam_on}/{cam_tot} online • Alarmes: {alm_on}/{alm_tot} online", ln=True)
-    pdf.ln(3)
+    pdf.cell(0, 8, f"Câmeras: {cam_on}/{cam_tot} online • Offline: {cam_off}", ln=True)
+    pdf.cell(0, 8, f"Alarmes: {alm_on}/{alm_tot} online • Offline: {alm_off}", ln=True)
+    pdf.ln(4)
 
     def add_table(title, data):
         pdf.set_font("Helvetica", "B", 11)
@@ -203,8 +186,8 @@ def build_pdf_bytes(df: pd.DataFrame) -> bytes:
             pdf.cell(0, 6, " | ".join(str(v) for v in r), ln=True)
         pdf.ln(2)
 
-    cam_rows = cam[cam["Cam_Status"]!="OK"][["Local","Cam_Status","Cam_Total","Cam_Online"]]
-    alm_rows = alm[alm["Alm_Status"]!="100%"][["Local","Alm_Status","Alm_Total","Alm_Online"]]
+    cam_rows = cam[(cam["Cam_OfflineBool"]) | (cam["Cam_Falta"]>0)][["Local","Cam_Status","Cam_Total","Cam_Online"]]
+    alm_rows = alm[(alm["Alm_OfflineBool"]) | (alm["Alm_Falta"]>0)][["Local","Alm_Status","Alm_Total","Alm_Online"]]
     add_table("Câmeras em manutenção/offline", cam_rows)
     add_table("Alarmes em manutenção/offline", alm_rows)
 
@@ -215,11 +198,7 @@ def build_pdf_bytes(df: pd.DataFrame) -> bytes:
 col_logo, col_title, col_search = st.columns([0.12, 0.58, 0.30])
 with col_logo:
     st.markdown("<div class='logo-card'>", unsafe_allow_html=True)
-    try:
-        st.image("https://raw.githubusercontent.com/perimetro97/dashboard-cameras/main/logo.png",
-                 use_container_width=True)
-    except Exception as e:
-        st.warning("⚠️ Logo não encontrada, mas o sistema continua funcionando.")
+    st.image(get_logo_source(), use_container_width=True)
     st.markdown("</div>", unsafe_allow_html=True)
 
 with col_title:
@@ -232,12 +211,17 @@ with col_title:
 with col_search:
     query = st.text_input("Pesquisar local...", "", placeholder="Digite o nome do local…")
 
-# Abas
-if "tab" not in st.session_state: st.session_state.tab = "Câmeras"
-b1, b2, b3 = st.columns(3)
-if b1.button("📷 Câmeras"): st.session_state.tab = "Câmeras"
-if b2.button("🚨 Alarmes"): st.session_state.tab = "Alarmes"
-if b3.button("📈 Geral"):   st.session_state.tab = "Geral"
+# Abas (botões mais próximos)
+st.markdown("<div class='btn-row'>", unsafe_allow_html=True)
+c1, c2, c3 = st.columns([0.2,0.2,0.2])
+with c1:
+    if st.button("📷 Câmeras"): st.session_state['tab'] = "Câmeras"
+with c2:
+    if st.button("🚨 Alarmes"): st.session_state['tab'] = "Alarmes"
+with c3:
+    if st.button("📈 Geral"):   st.session_state['tab'] = "Geral"
+st.markdown("</div>", unsafe_allow_html=True)
+if 'tab' not in st.session_state: st.session_state['tab'] = "Câmeras"
 
 # ------------- DADOS -------------
 df = load_data(PLANILHA)
@@ -248,104 +232,118 @@ if df.empty:
 has_query = bool(query.strip())
 dfv = df if not has_query else df[df["Local"].str.contains(query.strip(), case=False, na=False)]
 
-def mask_sem_cam(d): return ~d["Cam_Status"].str.contains("SEM CÂMERAS", case=False, na=False)
-def mask_sem_alm(d): return (d["Alm_Total"] > 0) & ~d["Alm_Status"].str.contains("SEM ALARME", case=False, na=False)
+def mask_sem_cam(d): return (d["Cam_Total"]>0)
+def mask_sem_alm(d): return (d["Alm_Total"]>0)
 
 # ------------- RENDER CÂMERAS -------------
 def render_cameras(dfx: pd.DataFrame):
     base = dfx if has_query else dfx[mask_sem_cam(dfx)]
     st.markdown("### 📷 Câmeras")
 
-    tot = int(base["Cam_Total"].sum()); on = int(base["Cam_Online"].sum()); off = max(tot - on, 0)
-    m1, m2, m3 = st.columns(3)
-    with m1: st.markdown(f"<div class='card'><div class='sub'>Total</div><div class='metric'>{tot}</div></div>", unsafe_allow_html=True)
-    with m2: st.markdown(f"<div class='card'><div class='sub'>Online</div><div class='metric' style='color:{CLR_GREEN};'>{on}</div></div>", unsafe_allow_html=True)
-    with m3: st.markdown(f"<div class='card'><div class='sub'>Offline/Manut.</div><div class='metric' style='color:{CLR_ORANGE};'>{off}</div></div>", unsafe_allow_html=True)
+    tot = int(base["Cam_Total"].sum())
+    on  = int(base["Cam_Online"].sum())
+    off = max(tot - on, 0)
+    manut_qtd_locais = int(((base["Cam_OfflineBool"]) | (base["Cam_Falta"]>0)).sum())
 
-    rows = base if has_query else base[~base["Cam_Status"].str.contains("OK", case=False, na=False)]
-    st.markdown("#### Locais em manutenção / offline")
-    if rows.empty:
+    # Cards (coluna única visualmente, mas métricas lado a lado)
+    m1, m2, m3, m4 = st.columns(4)
+    m1.markdown(f"<div class='card'><div class='sub'>Total</div><div class='metric'>{tot}</div></div>", unsafe_allow_html=True)
+    m2.markdown(f"<div class='card'><div class='sub'>Online</div><div class='metric' style='color:{CLR_GREEN};'>{on}</div></div>", unsafe_allow_html=True)
+    m3.markdown(f"<div class='card'><div class='sub'>Offline</div><div class='metric' style='color:{CLR_RED};'>{off}</div></div>", unsafe_allow_html=True)
+    m4.markdown(f"<div class='card'><div class='sub'>Locais p/ manutenção</div><div class='metric' style='color:{CLR_ORANGE};'>{manut_qtd_locais}</div></div>", unsafe_allow_html=True)
+
+    # Ordenação: 1) offline, 2) maior faltante
+    rows = base.copy()
+    rows["__prio"] = np.where(rows["Cam_OfflineBool"], 2, np.where(rows["Cam_Falta"]>0, 1, 0))
+    rows = rows[rows["__prio"]>0]
+    rows = rows.sort_values(["__prio","Cam_Falta"], ascending=[False, False])
+
+    st.markdown("#### Locais para manutenção / offline")
+    if rows.empty and not has_query:
         st.info("Nenhum local em manutenção. Use a busca para visualizar locais 100% OK.")
     else:
-        for _, r in rows.sort_values("Local").iterrows():
-            status = r["Cam_Status"].upper()
-            cor = "ok" if "OK" in status else ("warn" if ("FALTANDO" in status or "EXCESSO" in status) else "off")
+        for _, r in rows.iterrows():
+            status = "OFFLINE" if r["Cam_OfflineBool"] else (f"FALTANDO {int(r['Cam_Falta'])}" if r["Cam_Falta"]>0 else "OK")
+            cor = "off" if status=="OFFLINE" else ("warn" if status.startswith("FALTANDO") else "ok")
             info = f"Total: {r['Cam_Total']} • Online: {r['Cam_Online']}"
             card_local(r["Local"], status, info, cor)
 
-    tb = rows.assign(Status=rows["Cam_Status"], Total=rows["Cam_Total"], Online=rows["Cam_Online"])\
-             [["Local","Status","Total","Online"]].reset_index(drop=True)
-    st.markdown("#### Tabela resumida")
-    st.dataframe(tb, use_container_width=True)
+        # se houve busca, mostrar locais OK (discretos)
+        if has_query:
+            oks = base[(~base["Cam_OfflineBool"]) & (base["Cam_Falta"]==0)]
+            for _, r in oks.sort_values("Local").iterrows():
+                card_local(r["Local"], "OK", f"Total: {r['Cam_Total']} • Online: {r['Cam_Online']}", "ok")
 
-    # Gráficos (final)
-    pie_online_manutencao(tot, on, "Distribuição de câmeras")
-    dfc = pd.DataFrame({"Categoria":["Online","Manutenção","Offline"],
-                        "Quantidade":[on, max(tot-on,0), rows[rows["Cam_Status"].str.contains("OFFLINE", case=False, na=False)]["Cam_Total"].sum()]})
-    bar_online_offline(dfc, "Comparativo Online x Manutenção x Offline")
+    # Gráfico final (apenas Online, Offline, Locais p/ manutenção)
+    bar_single({"Online": on, "Offline": off, "Locais p/ manutenção": manut_qtd_locais},
+               "Resumo de Câmeras")
 
 # ------------- RENDER ALARMES -------------
 def render_alarms(dfx: pd.DataFrame):
     base = dfx if has_query else dfx[mask_sem_alm(dfx)]
     st.markdown("### 🚨 Alarmes")
 
-    tot = int(base["Alm_Total"].sum()); on = int(base["Alm_Online"].sum()); perc = 0 if tot==0 else round(100*on/tot,1)
-    m1, m2, m3 = st.columns(3)
-    with m1: st.markdown(f"<div class='card'><div class='sub'>Centrais Totais</div><div class='metric'>{tot}</div></div>", unsafe_allow_html=True)
-    with m2: st.markdown(f"<div class='card'><div class='sub'>Online</div><div class='metric' style='color:{CLR_GREEN};'>{on}</div></div>", unsafe_allow_html=True)
-    with m3: st.markdown(f"<div class='card'><div class='sub'>Percentual Geral</div><div class='metric' style='color:{CLR_BLUE};'>{perc}%</div></div>", unsafe_allow_html=True)
+    tot = int(base["Alm_Total"].sum())
+    on  = int(base["Alm_Online"].sum())
+    off = max(tot - on, 0)
+    manut_qtd_locais = int(((base["Alm_OfflineBool"]) | (base["Alm_Falta"]>0)).sum())
 
-    rows = base if has_query else base[base["Alm_Status"]!="100%"]
-    st.markdown("#### Locais em manutenção / offline")
-    if rows.empty:
+    m1, m2, m3, m4 = st.columns(4)
+    m1.markdown(f"<div class='card'><div class='sub'>Centrais Totais</div><div class='metric'>{tot}</div></div>", unsafe_allow_html=True)
+    m2.markdown(f"<div class='card'><div class='sub'>Online</div><div class='metric' style='color:{CLR_GREEN};'>{on}</div></div>", unsafe_allow_html=True)
+    m3.markdown(f"<div class='card'><div class='sub'>Offline</div><div class='metric' style='color:{CLR_RED};'>{off}</div></div>", unsafe_allow_html=True)
+    m4.markdown(f"<div class='card'><div class='sub'>Locais p/ manutenção</div><div class='metric' style='color:{CLR_ORANGE};'>{manut_qtd_locais}</div></div>", unsafe_allow_html=True)
+
+    # Ordenação: 1) offline, 2) maior faltante
+    rows = base.copy()
+    rows["__prio"] = np.where(rows["Alm_OfflineBool"], 2, np.where(rows["Alm_Falta"]>0, 1, 0))
+    rows = rows[rows["__prio"]>0]
+    rows = rows.sort_values(["__prio","Alm_Falta"], ascending=[False, False])
+
+    st.markdown("#### Locais para manutenção / offline")
+    if rows.empty and not has_query:
         st.info("Nenhum local em manutenção. Use a busca para visualizar locais 100%.")
     else:
-        for _, r in rows.sort_values("Local").iterrows():
-            stt = r["Alm_Status"]
-            cor = "ok" if stt=="100%" else ("off" if "OFFLINE" in stt else "warn")
+        for _, r in rows.iterrows():
+            status = "OFFLINE" if r["Alm_OfflineBool"] else (f"PARCIAL ({int(r['Alm_Online'])}/{int(r['Alm_Total'])})" if r["Alm_Falta"]>0 else "100%")
+            cor = "off" if status=="OFFLINE" else ("warn" if status.startswith("PARCIAL") else "ok")
             info = f"Total: {r['Alm_Total']} • Online: {r['Alm_Online']} • {r['Alm_Percent']:.0f}%"
-            card_local(r["Local"], stt, info, cor)
+            card_local(r["Local"], status, info, cor)
 
-    tb = rows.assign(Status=rows["Alm_Status"], Total=rows["Alm_Total"], Online=rows["Alm_Online"], Percent=rows["Alm_Percent"].round(0))\
-             [["Local","Status","Total","Online","Percent"]].rename(columns={"Percent":"%"}).reset_index(drop=True)
-    st.markdown("#### Tabela resumida")
-    st.dataframe(tb, use_container_width=True)
+        if has_query:
+            oks = base[(~base["Alm_OfflineBool"]) & (base["Alm_Falta"]==0)]
+            for _, r in oks.sort_values("Local").iterrows():
+                card_local(r["Local"], "100%", f"Total: {r['Alm_Total']} • Online: {r['Alm_Online']} • 100%", "ok")
 
-    # Gráficos (final)
-    pie_online_manutencao(tot, on, "Distribuição de alarmes")
-    dfa = pd.DataFrame({"Categoria":["Online","Manutenção","Offline"],
-                        "Quantidade":[on, max(tot-on,0), rows[rows["Alm_Status"].str.contains("OFFLINE", case=False, na=False)]["Alm_Total"].sum()]})
-    bar_online_offline(dfa, "Comparativo Online x Manutenção x Offline")
+    bar_single({"Online": on, "Offline": off, "Locais p/ manutenção": manut_qtd_locais},
+               "Resumo de Alarmes")
 
 # ------------- RENDER GERAL -------------
 def render_geral(dfx: pd.DataFrame):
     st.markdown("### 📈 Geral (Câmeras + Alarmes)")
-    cam_ok = dfx[mask_sem_cam(dfx)]
-    alm_ok = dfx[mask_sem_alm(dfx)]
+
+    cam_ok = dfx[dfx["Cam_Total"]>0]
+    alm_ok = dfx[dfx["Alm_Total"]>0]
 
     cam_tot, cam_on = int(cam_ok["Cam_Total"].sum()), int(cam_ok["Cam_Online"].sum())
     alm_tot, alm_on = int(alm_ok["Alm_Total"].sum()), int(alm_ok["Alm_Online"].sum())
+    cam_off, alm_off = max(cam_tot-cam_on,0), max(alm_tot-alm_on,0)
 
-    c1,c2,c3,c4 = st.columns(4)
-    with c1: st.markdown(f"<div class='card'><div class='sub'>Câmeras (total)</div><div class='metric'>{cam_tot}</div></div>", unsafe_allow_html=True)
-    with c2: st.markdown(f"<div class='card'><div class='sub'>Câmeras online</div><div class='metric' style='color:{CLR_GREEN};'>{cam_on}</div></div>", unsafe_allow_html=True)
-    with c3: st.markdown(f"<div class='card'><div class='sub'>Alarmes (total)</div><div class='metric'>{alm_tot}</div></div>", unsafe_allow_html=True)
-    with c4: st.markdown(f"<div class='card'><div class='sub'>Alarmes online</div><div class='metric' style='color:{CLR_GREEN};'>{alm_on}</div></div>", unsafe_allow_html=True)
+    c1,c2,c3,c4,c5,c6 = st.columns(6)
+    c1.markdown(f"<div class='card'><div class='sub'>Câmeras Online</div><div class='metric' style='color:{CLR_GREEN};'>{cam_on}</div></div>", unsafe_allow_html=True)
+    c2.markdown(f"<div class='card'><div class='sub'>Alarmes Online</div><div class='metric' style='color:{CLR_GREEN};'>{alm_on}</div></div>", unsafe_allow_html=True)
+    c3.markdown(f"<div class='card'><div class='sub'>Total de Câmeras</div><div class='metric'>{cam_tot}</div></div>", unsafe_allow_html=True)
+    c4.markdown(f"<div class='card'><div class='sub'>Total de Alarmes</div><div class='metric'>{alm_tot}</div></div>", unsafe_allow_html=True)
+    c5.markdown(f"<div class='card'><div class='sub'>Câmeras Offline</div><div class='metric' style='color:{CLR_RED};'>{cam_off}</div></div>", unsafe_allow_html=True)
+    c6.markdown(f"<div class='card'><div class='sub'>Alarmes Offline</div><div class='metric' style='color:{CLR_RED};'>{alm_off}</div></div>", unsafe_allow_html=True)
 
-    pie_online_manutencao(cam_tot+alm_tot, cam_on+alm_on, "Geral: Online vs Manutenção")
+    # gráfico geral (apenas barras simples)
+    total_online = cam_on + alm_on
+    total_off    = cam_off + alm_off
+    bar_single({"Online": total_online, "Offline": total_off, "Locais p/ manutenção": 0},
+               "Geral: Online x Offline")
 
-    comb = pd.DataFrame({
-        "Categoria":["Câmeras Online","Câmeras Manut.","Alarmes Online","Alarmes Manut."],
-        "Quantidade":[cam_on, max(cam_tot-cam_on,0), alm_on, max(alm_tot-alm_on,0)]
-    })
-    fig = px.bar(comb, x="Categoria", y="Quantidade", text="Quantidade",
-                 color="Categoria", color_discrete_map={
-                    "Câmeras Online":CLR_GREEN, "Câmeras Manut.":CLR_ORANGE,
-                    "Alarmes Online":CLR_GREEN, "Alarmes Manut.":CLR_ORANGE})
-    fig.update_traces(textposition="outside")
-    fig.update_layout(height=360, showlegend=False)
-    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
-
+    # PDF
     pdf_bytes = build_pdf_bytes(dfx)
     st.download_button("📄 Baixar PDF (Resumo do Dashboard)",
                        data=pdf_bytes,
@@ -353,11 +351,12 @@ def render_geral(dfx: pd.DataFrame):
                        mime="application/pdf", use_container_width=True)
 
 # ------------- DISPATCH -------------
-if st.session_state.tab == "Câmeras":
+tab = st.session_state['tab']
+if tab == "Câmeras":
     render_cameras(dfv)
-elif st.session_state.tab == "Alarmes":
+elif tab == "Alarmes":
     render_alarms(dfv)
 else:
     render_geral(dfv)
 
-st.caption("© Grupo Perímetro • Dashboard Operacional v3.3")
+st.caption("© Grupo Perímetro • Dashboard Operacional v3.4")
