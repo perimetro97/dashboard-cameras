@@ -185,15 +185,43 @@ def chip(texto, tipo):
     return f"<span class='chip {cls}'>{texto}</span>"
 
 def bar_values(values: dict, title: str):
-    dfc = pd.DataFrame({"Categoria": list(values.keys()),
-                        "Quantidade": list(values.values())})
-    fig = px.bar(dfc, x="Categoria", y="Quantidade", text="Quantidade",
-                 color="Categoria",
-                 color_discrete_map={{
-                     "Online": "{CLR_GREEN}",
-                     "Offline": "{CLR_RED}",
-                     "Locais p/ manutenção": "{CLR_ORANGE}"
-                 }})
+    dfc = pd.DataFrame({
+        "Categoria": list(values.keys()),
+        "Quantidade": list(values.values())
+    })
+    fig = px.bar(
+        dfc,
+        x="Categoria",
+        y="Quantidade",
+        text="Quantidade",
+        color="Categoria",
+        color_discrete_map={
+            "Online": CLR_GREEN,
+            "Offline": CLR_RED,
+            "Locais p/ manutenção": CLR_ORANGE
+        }
+    )
+    fig.update_traces(textposition="outside", cliponaxis=False)
+    fig.update_layout(
+        title=title,
+        height=360,
+        margin=dict(l=10, r=10, t=50, b=20),
+        paper_bgcolor=CLR_PANEL,
+        plot_bgcolor=CLR_PANEL,
+        font=dict(size=13),
+        showlegend=False,
+        xaxis_title=None,
+        yaxis_title="Quantidade"
+    )
+    st.plotly_chart(
+        fig,
+        use_container_width=True,
+        config={
+            "displaylogo": False,
+            "toImageFilename": f"grafico_{title.lower().replace(' ','_')}",
+            "modeBarButtonsToAdd": ["toImage"]
+        }
+    )
     fig.update_traces(textposition="outside", cliponaxis=False)
     fig.update_layout(title=title, height=360,
                       margin=dict(l=10,r=10,t=50,b=20),
