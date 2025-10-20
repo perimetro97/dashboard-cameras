@@ -171,7 +171,10 @@ df = load_data()
 col_logo, col_title, col_search = st.columns([0.12,0.58,0.30])
 with col_logo:
     st.markdown("<div class='logo-card'>", unsafe_allow_html=True)
-    if logo_bytes: st.image(logo_bytes, use_container_width=True)
+    st.image(
+    "https://raw.githubusercontent.com/perimetro97/dashboard-cameras/main/logo_perimetro.png",
+    use_container_width=True
+    )
     else: st.write("**Grupo Perímetro**")
     st.markdown("</div>", unsafe_allow_html=True)
 with col_title:
