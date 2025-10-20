@@ -1,5 +1,5 @@
 # app.py
-# Streamlit dashboard — CFTV & Alarmes (tema escuro + busca + duas seções)
+# Streamlit dashboard — CFTV & Alarmes 
 
 import streamlit as st
 import pandas as pd
