@@ -63,18 +63,22 @@ st.markdown(f"""
 
 # ---------------------------- LOGO ROBUSTA ----------------------------
 def load_logo():
-    candidates = ["logo_perimetro.png", "logo_perimetro.jpg", "logo.png", "logo.jpg"]
-    for pat in candidates + [*glob.glob("logo*.*")]:
-        if os.path.isfile(pat):
+    # Caminho absoluto (garante que funcione no Streamlit Cloud)
+    paths = [
+        "/mount/src/dashboard-cameras/logo_perimetro.png",
+        "logo_perimetro.png",
+        "./logo_perimetro.png",
+        os.path.join(os.getcwd(), "logo_perimetro.png")
+    ]
+    for path in paths:
+        if os.path.exists(path):
             try:
-                img = Image.open(pat).convert("RGBA")
+                img = Image.open(path).convert("RGBA")
                 buf = BytesIO(); img.save(buf, format="PNG")
                 return buf.getvalue()
-            except Exception:
-                pass
+            except Exception as e:
+                st.write(f"Erro ao carregar logo: {e}")
     return None
-
-logo_bytes = load_logo()
 
 # ---------------------------- LEITURA DA PLANILHA ----------------------------
 def _to_int(x):
