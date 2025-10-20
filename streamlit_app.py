@@ -173,8 +173,7 @@ with col_logo:
     st.markdown("<div class='logo-card'>", unsafe_allow_html=True)
     st.image(
     "https://raw.githubusercontent.com/perimetro97/dashboard-cameras/main/logo_perimetro.png",
-    use_container_width=True
-    )
+    use_container_width=True)
     else: st.write("**Grupo Perímetro**")
     st.markdown("</div>", unsafe_allow_html=True)
 with col_title:
