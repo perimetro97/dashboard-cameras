@@ -244,7 +244,7 @@ st.markdown("</div>", unsafe_allow_html=True)
 
 # ------------------ ABAS ------------------
 st.markdown("<div class='btn-row'>", unsafe_allow_html=True)
-b1, b2, b3, _ = st.columns([0.8,0.8,0.8,0.32], gap="small")
+b1, b2, b3, _ = st.columns([0.24,0.24,0.24,0.128], gap="small")
 if "tab" not in st.session_state: st.session_state.tab = "Câmeras"
 
 def tab_button(label, tab_name, key):
