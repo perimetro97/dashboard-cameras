@@ -104,25 +104,37 @@ st.markdown(f"""
 
 # ---------------- LOGO ROBUSTA ----------------
 def load_logo_bytes():
-    paths = [
+    import requests
+    possible_paths = [
         "logo_perimetro.png",
         "./logo_perimetro.png",
+        "/app/logo_perimetro.png",
         "/app/dashboard-cameras/logo_perimetro.png",
-        "/mount/src/dashboard-cameras/logo_perimetro.png"
+        "/mount/src/dashboard-cameras/logo_perimetro.png",
     ]
-    for p in paths + glob.glob("**/logo_perimetro.*", recursive=True):
+    # tenta localizar localmente
+    for p in possible_paths:
         if os.path.exists(p):
             try:
                 img = Image.open(p).convert("RGBA")
-                buf = BytesIO(); img.save(buf, format="PNG"); buf.seek(0)
-                st.sidebar.success(f"✅ Logo carregada: {os.path.basename(p)}")
+                buf = BytesIO()
+                img.save(buf, format="PNG")
+                buf.seek(0)
                 return buf.read()
-            except Exception as e:
-                st.sidebar.warning(f"Erro: {e}")
-    st.sidebar.warning("⚠️ Nenhum arquivo de logo encontrado.")
-    return None
+            except Exception:
+                pass
 
-logo_bytes = load_logo_bytes()
+    # fallback: tenta baixar direto do GitHub
+    try:
+        url = "https://raw.githubusercontent.com/perimetro97/dashboard-cameras/main/logo_perimetro.png"
+        r = requests.get(url, timeout=10)
+        if r.status_code == 200:
+            return r.content
+    except Exception:
+        pass
+
+    # se nada der certo, retorna None
+    return None
 
 # ---------------- LEITURA DA PLANILHA ----------------
 def to_int(x):
