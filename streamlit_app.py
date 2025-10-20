@@ -1,9 +1,8 @@
 # =========================================================
-# Dashboard Operacional – Grupo Perímetro (v5.4)
-# CFTV & Alarmes • Visual Pro • Moderno • Leve
+# Dashboard Operacional – Grupo Perímetro (v5.5)
+# CFTV & Alarmes • Visual Pro • Logo via GitHub
 # =========================================================
-import os, requests
-from io import BytesIO
+import requests
 from datetime import datetime
 import streamlit as st
 import pandas as pd
@@ -15,16 +14,9 @@ st.set_page_config(page_title="Dashboard Operacional – CFTV & Alarmes",
                    page_icon="🛡️", layout="wide")
 
 PLANILHA = "dados.xlsx"
+LOGO_URL = "https://raw.githubusercontent.com/perimetro97/dashboard-cameras/main/logo.png"
 
-# Caminhos possíveis da logo (sem base64)
-LOGO_FILE_CANDIDATES = [
-    "logo.png", "./logo.png", "/app/logo.png",
-    "/mount/src/dashboard-cameras/logo.png",
-    "logo_perimetro.png", "./logo_perimetro.png"
-]
-LOGO_URL_RAW = "https://raw.githubusercontent.com/perimetro97/dashboard-cameras/main/logo.png"
-
-# Paleta
+# ------------------ PALETA DE CORES ------------------
 CLR_BG     = "#F5F6FA"
 CLR_PANEL  = "#FFFFFF"
 CLR_TEXT   = "#1E293B"
@@ -41,8 +33,10 @@ st.markdown(f"""
 .stApp {{
   background:{CLR_BG};
   color:{CLR_TEXT};
-  font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, sans-serif;
+  font-family: 'Inter', system-ui, Segoe UI, Roboto, sans-serif;
+  animation: fadein .3s ease;
 }}
+@keyframes fadein {{ from {{ opacity:0 }} to {{ opacity:1 }} }}
 .top-wrap {{
   background: linear-gradient(90deg, {CLR_BLUE}, {CLR_ORANGE});
   border-radius: 18px;
@@ -54,8 +48,10 @@ st.markdown(f"""
   border: 1px solid rgba(255,255,255,.35);
   border-radius: 12px;
   padding: 6px;
-  backdrop-filter: blur(4px);
+  text-align: center;
+  transition: transform .3s ease;
 }}
+.logo-card:hover {{ transform: scale(1.05); }}
 .title {{
   font-size: 26px;
   font-weight: 800;
@@ -75,13 +71,14 @@ st.markdown(f"""
   border-radius: 10px;
   padding: 8px 14px;
   font-weight: 600;
-  transition: 0.2s ease;
-  margin-right: 5px;
+  transition: 0.25s ease;
+  margin-right: 6px;
 }}
 .btn-row .stButton>button:hover {{
-  transform: scale(1.05);
+  transform: scale(1.06);
   background: {CLR_ORANGE};
   color: #fff;
+  box-shadow: 0 6px 16px rgba(255,102,0,.25);
 }}
 input[type="text"] {{
   border: 2px solid {CLR_BLUE} !important;
@@ -119,39 +116,32 @@ input[type="text"] {{
 
 # ------------------ LOGO ------------------
 def load_logo_bytes():
-    for p in LOGO_FILE_CANDIDATES:
-        if os.path.exists(p):
-            try:
-                with open(p, "rb") as f:
-                    return f.read()
-            except Exception:
-                pass
     try:
-        r = requests.get(LOGO_URL_RAW, timeout=5)
+        r = requests.get(LOGO_URL, timeout=6)
         if r.ok:
             return r.content
     except Exception:
-        pass
+        return None
     return None
 
 # ------------------ DADOS ------------------
 @st.cache_data(show_spinner=False)
 def load_data(path: str) -> pd.DataFrame:
-    raw = pd.read_excel(path, header=None)
-    raw = raw.dropna(how="all").iloc[:, 0:7]
-    raw.columns = ["Local","Cam_Total","Cam_Online","Cam_Status",
-                   "Alm_Total","Alm_Online","Alm_Status"]
-    raw = raw.dropna(subset=["Local"])
-    raw = raw[~raw["Local"].astype(str).str.contains("TOTAL|RELATORIO", case=False, na=False)]
+    df = pd.read_excel(path, header=None)
+    df = df.dropna(how="all").iloc[:, 0:7]
+    df.columns = ["Local","Cam_Total","Cam_Online","Cam_Status",
+                  "Alm_Total","Alm_Online","Alm_Status"]
+    df = df.dropna(subset=["Local"])
+    df = df[~df["Local"].astype(str).str.contains("TOTAL|RELATORIO", case=False, na=False)]
 
     for c in ["Cam_Total","Cam_Online","Alm_Total","Alm_Online"]:
-        raw[c] = pd.to_numeric(raw[c], errors="coerce").fillna(0).astype(int)
+        df[c] = pd.to_numeric(df[c], errors="coerce").fillna(0).astype(int)
 
-    raw["Cam_Falta"] = (raw["Cam_Total"] - raw["Cam_Online"]).clip(lower=0)
-    raw["Alm_Falta"] = (raw["Alm_Total"] - raw["Alm_Online"]).clip(lower=0)
-    raw["Cam_OfflineBool"] = (raw["Cam_Total"]>0) & (raw["Cam_Online"]==0)
-    raw["Alm_OfflineBool"] = (raw["Alm_Total"]>0) & (raw["Alm_Online"]==0)
-    return raw.reset_index(drop=True)
+    df["Cam_Falta"] = (df["Cam_Total"] - df["Cam_Online"]).clip(lower=0)
+    df["Alm_Falta"] = (df["Alm_Total"] - df["Alm_Online"]).clip(lower=0)
+    df["Cam_OfflineBool"] = (df["Cam_Total"]>0) & (df["Cam_Online"]==0)
+    df["Alm_OfflineBool"] = (df["Alm_Total"]>0) & (df["Alm_Online"]==0)
+    return df.reset_index(drop=True)
 
 # ------------------ GRÁFICO ------------------
 def bar_values(values, title):
@@ -175,7 +165,7 @@ with col1:
     if _logo:
         st.image(_logo, use_container_width=True)
     else:
-        st.warning("⚠️ Logo não carregada, mas o sistema continua funcionando.")
+        st.warning("⚠️ Logo não carregada (verifique o link do repositório).")
     st.markdown("</div>", unsafe_allow_html=True)
 with col2:
     st.markdown("<div class='title'>Dashboard Operacional – CFTV & Alarmes</div>", unsafe_allow_html=True)
@@ -205,7 +195,7 @@ st.divider()
 df = load_data(PLANILHA)
 dfv = df if not query.strip() else df[df["Local"].str.contains(query.strip(), case=False, na=False)]
 
-# ------------------ FUNÇÕES DE RENDER ------------------
+# ------------------ CÂMERAS ------------------
 def render_cameras(dfv):
     base = dfv[dfv["Cam_Total"]>0]
     st.markdown("#### 📷 Câmeras")
@@ -215,12 +205,13 @@ def render_cameras(dfv):
     locais_manut = int(((base["Cam_OfflineBool"]) | (base["Cam_Falta"]>0)).sum())
 
     c1,c2,c3,c4 = st.columns(4)
-    c1.markdown(f"<div class='card'><div class='metric-sub'>Total</div><div class='metric'>{total}</div></div>", unsafe_allow_html=True)
-    c2.markdown(f"<div class='card'><div class='metric-sub'>Online</div><div class='metric' style='color:{CLR_GREEN};'>{online}</div></div>", unsafe_allow_html=True)
-    c3.markdown(f"<div class='card'><div class='metric-sub'>Offline</div><div class='metric' style='color:{CLR_RED};'>{offline}</div></div>", unsafe_allow_html=True)
-    c4.markdown(f"<div class='card'><div class='metric-sub'>Locais p/ manutenção</div><div class='metric' style='color:{CLR_ORANGE};'>{locais_manut}</div></div>", unsafe_allow_html=True)
+    c1.metric("Total", total)
+    c2.metric("Online", online)
+    c3.metric("Offline", offline)
+    c4.metric("Locais p/ manutenção", locais_manut)
     bar_values({"Online": online, "Offline": offline, "Manutenção": locais_manut}, "Resumo de Câmeras")
 
+# ------------------ ALARMES ------------------
 def render_alarms(dfv):
     base = dfv[dfv["Alm_Total"]>0]
     st.markdown("#### 🚨 Alarmes")
@@ -230,12 +221,13 @@ def render_alarms(dfv):
     locais_manut = int(((base["Alm_OfflineBool"]) | (base["Alm_Falta"]>0)).sum())
 
     a1,a2,a3,a4 = st.columns(4)
-    a1.markdown(f"<div class='card'><div class='metric-sub'>Centrais Totais</div><div class='metric'>{total}</div></div>", unsafe_allow_html=True)
-    a2.markdown(f"<div class='card'><div class='metric-sub'>Online</div><div class='metric' style='color:{CLR_GREEN};'>{online}</div></div>", unsafe_allow_html=True)
-    a3.markdown(f"<div class='card'><div class='metric-sub'>Offline</div><div class='metric' style='color:{CLR_RED};'>{offline}</div></div>", unsafe_allow_html=True)
-    a4.markdown(f"<div class='card'><div class='metric-sub'>Locais p/ manutenção</div><div class='metric' style='color:{CLR_ORANGE};'>{locais_manut}</div></div>", unsafe_allow_html=True)
+    a1.metric("Centrais Totais", total)
+    a2.metric("Online", online)
+    a3.metric("Offline", offline)
+    a4.metric("Locais p/ manutenção", locais_manut)
     bar_values({"Online": online, "Offline": offline, "Manutenção": locais_manut}, "Resumo de Alarmes")
 
+# ------------------ GERAL ------------------
 def render_geral(dfv):
     st.markdown("#### 📊 Geral (Câmeras + Alarmes)")
     cam = dfv[dfv["Cam_Total"]>0]
@@ -262,4 +254,4 @@ elif tab == "Alarmes":
 else:
     render_geral(dfv)
 
-st.caption("© Grupo Perímetro • Dashboard Operacional v5.4")
+st.caption("© Grupo Perímetro • Dashboard Operacional v5.5")
