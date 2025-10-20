@@ -13,7 +13,7 @@ import plotly.express as px
 
 # ------------------ CONFIG ------------------
 st.set_page_config(page_title="Dashboard Operacional – CFTV & Alarmes",
-                   page_icon="🛡️", layout="wide")
+                   page_icon="📹", layout="wide")
 
 PLANILHA = "dados.xlsx"
 
