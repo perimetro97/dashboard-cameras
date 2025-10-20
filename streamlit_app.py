@@ -1,6 +1,6 @@
 # =========================================================
 # Dashboard Operacional – Grupo Perímetro
-# CFTV & Alarmes | Tema Escuro Tecnológico | Streamlit 1.38
+# CFTV & Alarmes | Tema Escuro | Streamlit 1.38 (Py 3.12)
 # =========================================================
 
 import streamlit as st
@@ -8,229 +8,169 @@ import pandas as pd
 import numpy as np
 from datetime import datetime
 
-# ---------- CONFIGURAÇÃO DE PÁGINA ----------
-st.set_page_config(
-    page_title="Dashboard Operacional – CFTV & Alarmes",
-    page_icon="🛡️",
-    layout="wide"
-)
-
-# ---------- CORES E ESTILOS ----------
-PRIMARY_NEON = "#00E5FF"
-SUCCESS_NEON = "#17E66E"
-WARN_NEON    = "#FFD54A"
-DANGER_NEON  = "#FF4D4D"
-BG_DARK      = "#0D0F14"
-PANEL_DARK   = "#141823"
-TEXT_LIGHT   = "#E6E8EE"
+# --------- CONFIG ---------
+st.set_page_config(page_title="Dashboard Operacional – CFTV & Alarmes",
+                   page_icon="🛡️", layout="wide")
 
 PLANILHA = "dados.xlsx"
 LOGO_PATH = "logo_perimetro.png"
 
-st.markdown(
-    f"""
-    <style>
-    .stApp {{
-        background-color: {BG_DARK};
-        color: {TEXT_LIGHT};
-        font-family: 'Inter', sans-serif;
-    }}
-    .big-title {{
-        font-size: 22px; font-weight: 700;
-        color: {PRIMARY_NEON};
-    }}
-    .card {{
-        background: {PANEL_DARK};
-        padding: 16px;
-        border-radius: 12px;
-        box-shadow: 0 0 18px rgba(0,229,255,.08);
-        border: 1px solid rgba(255,255,255,0.06);
-    }}
-    .tag-ok {{color:{SUCCESS_NEON};}}
-    .tag-warn {{color:{WARN_NEON};}}
-    .tag-off {{color:{DANGER_NEON};}}
-    </style>
-    """,
-    unsafe_allow_html=True
-)
+PRIMARY = "#00E5FF"; OKC="#17E66E"; WARN="#FFD54A"; DNG="#FF4D4D"
+BG="#0D0F14"; PANEL="#141823"; TEXT="#E6E8EE"
 
-# =========================================================
-# FUNÇÃO PRINCIPAL DE LEITURA DA PLANILHA
-# =========================================================
-@st.cache_data(show_spinner=False)
-def load_data(planilha_path: str):
+st.markdown(f"""
+<style>
+.stApp {{ background:{BG}; color:{TEXT}; font-family:Inter, system-ui; }}
+h1,h2,h3 {{ color:{PRIMARY}; }}
+.card {{ background:{PANEL}; border:1px solid rgba(255,255,255,.06);
+        padding:16px; border-radius:12px; box-shadow:0 0 18px rgba(0,229,255,.08); }}
+.small {{ color:#9aa3b2; font-size:12px; }}
+.tag-ok {{ color:{OKC}; }} .tag-warn {{ color:{WARN}; }} .tag-off {{ color:{DNG}; }}
+</style>
+""", unsafe_allow_html=True)
+
+# --------- HELPERS ---------
+def _to_int(x):
+    if pd.isna(x): return 0
+    s = str(x).strip().replace(",", ".").upper()
+    if s == "OFFLINE": return 0
     try:
-        df_raw = pd.read_excel(planilha_path, header=None)
+        return int(float(s))
+    except:
+        return 0
 
-        # Localiza a primeira linha com "OK", "OFFLINE" ou "FALTANDO"
-        start_index = None
-        for i, row in df_raw.iterrows():
-            if row.astype(str).str.contains("OK|OFFLINE|FALTANDO", case=False, na=False).any():
-                start_index = max(i - 1, 0)
-                break
-        if start_index is None:
-            start_index = 3
+# --------- LOAD DATA (ajustado para sua planilha) ---------
+@st.cache_data(show_spinner=False)
+def load_data(xlsx_path: str) -> pd.DataFrame:
+    df = pd.read_excel(xlsx_path, header=None)     # 55 x 15 na planilha enviada
 
-        df = df_raw.iloc[start_index:, :8].copy()
+    # localizar a linha de cabeçalho (onde aparecem os títulos)
+    hdr = None
+    for i, row in df.iterrows():
+        s = row.astype(str).str.upper()
+        if s.str.contains("POSTOS MONITORADOS").any() and \
+           s.str.contains("QUANTIDADE DE CÂMERAS FIXA").any():
+            hdr = i; break
+    if hdr is None: hdr = 2   # fallback (linha 3 da planilha)
 
-        # Garante 7 colunas
-        if df.shape[1] < 7:
-            for _ in range(7 - df.shape[1]):
-                df[df.shape[1]] = np.nan
-        elif df.shape[1] > 7:
-            df = df.iloc[:, :7]
+    # recorte apenas do bloco da esquerda (colunas 0..6), dados começam na linha seguinte ao cabeçalho
+    data = df.iloc[hdr+1:, 0:7].copy()
+    data.columns = ["Local","Cam_Total","Cam_Online","Cam_Status",
+                    "Alm_Total","Alm_Online","Alm_Status"]
 
-        df.columns = [
-            "A_Local", "B_TotalCam", "C_OnlineCam", "D_StatusCam",
-            "E_TotalAlm", "F_OnlineAlm", "G_PercentAlm"
-        ]
+    # remover linhas vazias e o "espelho" / totais do fim
+    data = data[~data["Local"].isna()]
+    data = data[~data["Local"].astype(str).str.contains("TOTAL|FUNCIONANDO|OFFLINE|EXCESSO|202", case=False, na=False)]
 
-        df = df.dropna(how="all")
-        df["A_Local"] = df["A_Local"].astype(str).str.strip()
+    # números
+    for c in ["Cam_Total","Cam_Online","Alm_Total","Alm_Online"]:
+        data[c] = data[c].apply(_to_int)
 
-        # Converte números
-        for col in ["B_TotalCam", "C_OnlineCam", "E_TotalAlm", "F_OnlineAlm"]:
-            df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0).astype(int)
+    # status câmeras (preenche se vier vazio)
+    def cam_status(row):
+        s = str(row["Cam_Status"]).strip().upper()
+        tot, on = row["Cam_Total"], row["Cam_Online"]
+        if s and s != "NAN":
+            return s
+        if tot == 0: return "SEM CÂMERAS"
+        if on == tot: return "OK"
+        if on > tot:  return "EXCESSO"
+        if on == 0:   return "OFFLINE"
+        return f"FALTANDO {max(tot-on,0)}"
 
-        # Percentual de alarmes
-        def calc_percent(row):
-            if row["E_TotalAlm"] <= 0:
-                return 0.0
-            return round((row["F_OnlineAlm"] / row["E_TotalAlm"]) * 100, 2)
+    data["Cam_Status"] = data.apply(cam_status, axis=1)
 
-        df["G_PercentAlm"] = df["G_PercentAlm"].apply(
-            lambda v: float(str(v).replace("%", "").strip()) if pd.notna(v) else np.nan
-        )
-        df["G_PercentAlm"] = np.where(
-            df["G_PercentAlm"].notna(),
-            df["G_PercentAlm"],
-            df.apply(calc_percent, axis=1)
-        )
+    # % alarmes
+    def alm_percent(row):
+        tot, on = row["Alm_Total"], row["Alm_Online"]
+        if tot <= 0: return 0.0
+        return round(100.0 * on / tot, 2)
+    data["Alm_Percent"] = data.apply(alm_percent, axis=1)
 
-        # Status de câmeras
-        def status_cam(row):
-            total, online = row["B_TotalCam"], row["C_OnlineCam"]
-            s = str(row["D_StatusCam"]).strip().upper()
-            if "OK" in s or "EXCESSO" in s or "FALTANDO" in s or "OFFLINE" in s:
-                return s
-            if total == 0:
-                return "SEM DADOS"
-            if online == total:
-                return "OK"
-            if online > total:
-                return "EXCESSO"
-            if online == 0:
-                return "OFFLINE"
-            return f"FALTANDO {total - online}"
+    # status alarmes (prioriza texto; senão classifica pela %)
+    def alm_status(row):
+        s = str(row["Alm_Status"]).strip().upper()
+        if "100%" in s:   return "100%"
+        if "50%" in s:    return "PARCIAL (50%)"
+        if "OFFLINE" in s or "SEM ALARME" in s: return "OFFLINE"
+        p = row["Alm_Percent"]
+        if p >= 99.9: return "100%"
+        if p >= 66:   return "PARCIAL (≥66%)"
+        if p >= 50:   return "PARCIAL (50%)"
+        if p > 0:     return "PARCIAL (<50%)"
+        return "OFFLINE"
 
-        df["D_StatusCam"] = df.apply(status_cam, axis=1)
+    data["Alm_Status"] = data.apply(alm_status, axis=1)
 
-        # Status de alarmes
-        def status_alm(p):
-            if p >= 99.9:
-                return "100%"
-            if p >= 66:
-                return "PARCIAL (≥66%)"
-            if p >= 50:
-                return "PARCIAL (50%)"
-            if p > 0:
-                return "PARCIAL (<50%)"
-            return "OFFLINE"
+    # normalizações finais
+    data["Local"] = data["Local"].astype(str).str.strip()
+    return data.reset_index(drop=True)
 
-        df["Alarmes_Status"] = df["G_PercentAlm"].apply(status_alm)
-        return df
-
-    except Exception as e:
-        st.error(f"Erro ao carregar planilha: {e}")
-        return pd.DataFrame(columns=[
-            "A_Local", "B_TotalCam", "C_OnlineCam", "D_StatusCam",
-            "E_TotalAlm", "F_OnlineAlm", "G_PercentAlm", "Alarmes_Status"
-        ])
-
-# =========================================================
-# CARREGAR OS DADOS
-# =========================================================
+# --------- CARREGA ---------
 df = load_data(PLANILHA)
-
 if df.empty:
-    st.warning("⚠️ Não foi possível ler os dados. Verifique a planilha.")
+    st.error("Não foi possível ler dados da planilha. Verifique o arquivo `dados.xlsx`.")
     st.stop()
 
-# =========================================================
-# CABEÇALHO
-# =========================================================
-col_logo, col_title = st.columns([0.12, 0.88])
-with col_logo:
-    st.image(LOGO_PATH, width=80)
-with col_title:
-    st.markdown(
-        f"<div class='big-title'>Dashboard Operacional – CFTV & Alarmes</div>"
-        f"<div style='color:#9aa3b2;font-size:12px;'>Atualizado em "
-        f"{datetime.now().strftime('%d/%m/%Y %H:%M')}</div>",
-        unsafe_allow_html=True
-    )
+# --------- HEADER ---------
+c1, c2 = st.columns([0.12, 0.88])
+with c1: st.image(LOGO_PATH, width=80)
+with c2:
+    st.markdown(f"### Dashboard Operacional – CFTV & Alarmes")
+    st.markdown(f"<span class='small'>Atualizado em {datetime.now().strftime('%d/%m/%Y %H:%M')}</span>",
+                unsafe_allow_html=True)
 
-# =========================================================
-# MENU DE NAVEGAÇÃO
-# =========================================================
-tab = st.radio("Escolha a visualização:", ["📷 Câmeras", "🚨 Alarmes"], horizontal=True)
-pesquisa = st.text_input("Pesquisar local...", "")
+# --------- BUSCA + TOGGLE ---------
+col_a, col_b = st.columns([0.6,0.4])
+with col_a:
+    tab = st.radio(" ", ["📷 Câmeras", "🚨 Alarmes"], horizontal=True, label_visibility="collapsed")
+with col_b:
+    query = st.text_input("Pesquisar local...", "", placeholder="Pesquisar local...")
 
-if pesquisa:
-    df = df[df["A_Local"].str.contains(pesquisa, case=False, na=False)]
+dff = df.copy()
+if query.strip():
+    dff = dff[dff["Local"].str.contains(query.strip(), case=False, na=False)]
 
-# =========================================================
-# VISUAL CÂMERAS
-# =========================================================
+# --------- CÂMERAS ---------
 if "Câmeras" in tab:
-    st.subheader("📷 Status das Câmeras")
+    st.subheader("📷 Câmeras")
+    tot = int(dff["Cam_Total"].sum())
+    on  = int(dff["Cam_Online"].sum())
+    off = max(tot - on, 0)
 
-    total_cam = int(df["B_TotalCam"].sum())
-    online_cam = int(df["C_OnlineCam"].sum())
-    offline_cam = max(total_cam - online_cam, 0)
+    m1,m2,m3 = st.columns(3)
+    m1.metric("Total de Câmeras", tot)
+    m2.metric("Online", on)
+    m3.metric("Offline / Faltando", off)
 
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.metric("Total de Câmeras", total_cam)
-    with col2:
-        st.metric("Online", online_cam)
-    with col3:
-        st.metric("Offline / Faltando", offline_cam)
-
-    for _, row in df.iterrows():
+    for _, r in dff.sort_values("Local").iterrows():
+        css = "tag-ok" if "OK" in r["Cam_Status"] else "tag-off" if "OFFLINE" in r["Cam_Status"] else "tag-warn"
         st.markdown(
-            f"<div class='card'>📍 <b>{row['A_Local']}</b> — "
-            f"<span class='tag-{ 'ok' if 'OK' in row['D_StatusCam'] else 'off' if 'OFFLINE' in row['D_StatusCam'] else 'warn'}'>"
-            f"{row['D_StatusCam']}</span></div>",
+            f"<div class='card'>📍 <b>{r['Local']}</b> — "
+            f"<span class='{css}'>{r['Cam_Status']}</span> "
+            f"<span class='small'>&nbsp;• Total: {r['Cam_Total']} · Online: {r['Cam_Online']}</span></div>",
             unsafe_allow_html=True
         )
 
-# =========================================================
-# VISUAL ALARMES
-# =========================================================
+# --------- ALARMES ---------
 else:
-    st.subheader("🚨 Status dos Alarmes")
+    st.subheader("🚨 Alarmes")
+    tot = int(dff["Alm_Total"].sum())
+    on  = int(dff["Alm_Online"].sum())
+    perc = round((on/tot*100),1) if tot>0 else 0.0
 
-    total_alm = int(df["E_TotalAlm"].sum())
-    online_alm = int(df["F_OnlineAlm"].sum())
-    perc = round((online_alm / total_alm * 100), 1) if total_alm > 0 else 0
+    m1,m2,m3 = st.columns(3)
+    m1.metric("Centrais Totais", tot)
+    m2.metric("Online", on)
+    m3.metric("Percentual Geral", f"{perc}%")
 
-    c1, c2, c3 = st.columns(3)
-    with c1:
-        st.metric("Centrais Totais", total_alm)
-    with c2:
-        st.metric("Online", online_alm)
-    with c3:
-        st.metric("Percentual Geral", f"{perc}%")
-
-    for _, row in df.iterrows():
-        cor = "ok" if row["Alarmes_Status"] == "100%" else "warn" if "PARCIAL" in row["Alarmes_Status"] else "off"
+    for _, r in dff.sort_values("Local").iterrows():
+        cor = "tag-ok" if r["Alm_Status"]=="100%" else ("tag-warn" if "PARCIAL" in r["Alm_Status"] else "tag-off")
         st.markdown(
-            f"<div class='card'>📍 <b>{row['A_Local']}</b> — "
-            f"<span class='tag-{cor}'>{row['Alarmes_Status']}</span> "
-            f"<small>({row['G_PercentAlm']:.0f}% online)</small></div>",
+            f"<div class='card'>📍 <b>{r['Local']}</b> — "
+            f"<span class='{cor}'>{r['Alm_Status']}</span> "
+            f"<span class='small'>&nbsp;• Total: {r['Alm_Total']} · Online: {r['Alm_Online']} · {r['Alm_Percent']:.0f}%</span></div>",
             unsafe_allow_html=True
         )
 
-# =========================================================
-st.caption("© Grupo Perímetro • Dashboard Operacional • v1.2 (2025)")
+st.caption("© Grupo Perímetro • Dashboard Operacional • v1.3")
