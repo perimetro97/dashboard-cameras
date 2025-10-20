@@ -382,4 +382,4 @@ elif tab == "Alarmes":
 else:
     render_geral(dfv)
 
-st.caption("© Grupo Perímetro • Dashboard Operacional v5.6.2")
+st.caption("© Grupo Perímetro & Monitoramento • Dashboard Operacional")
