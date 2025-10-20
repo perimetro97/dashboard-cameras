@@ -13,12 +13,57 @@ from PIL import Image
 import os, glob
 from pathlib import Path
 
-# PDF
-from reportlab.lib.pagesizes import A4
-from reportlab.lib import colors
-from reportlab.lib.styles import getSampleStyleSheet
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
-from reportlab.lib.units import cm
+# --- PDF (versão leve, usando fpdf2) ---
+from fpdf import FPDF
+
+def build_pdf_bytes(df):
+    class PDF(FPDF):
+        def header(self):
+            self.set_font("Helvetica", "B", 14)
+            self.cell(0, 10, "Dashboard Operacional – Grupo Perímetro", ln=True, align="C")
+            self.ln(5)
+            self.set_font("Helvetica", "", 10)
+            self.cell(0, 8, datetime.now().strftime("%d/%m/%Y %H:%M"), ln=True, align="C")
+            self.ln(6)
+    pdf = PDF()
+    pdf.add_page()
+    pdf.set_font("Helvetica", "", 10)
+
+    cam = df[df["Cam_Total"]>0]
+    alm = df[df["Alm_Total"]>0]
+    cam_tot, cam_on = cam["Cam_Total"].sum(), cam["Cam_Online"].sum()
+    alm_tot, alm_on = alm["Alm_Total"].sum(), alm["Alm_Online"].sum()
+
+    pdf.cell(0, 8, "Resumo Geral", ln=True)
+    pdf.cell(0, 8, f"Câmeras: {cam_on}/{cam_tot} online", ln=True)
+    pdf.cell(0, 8, f"Alarmes: {alm_on}/{alm_tot} online", ln=True)
+    pdf.ln(8)
+
+    def add_table(title, data):
+        pdf.set_font("Helvetica", "B", 11)
+        pdf.cell(0, 8, title, ln=True)
+        pdf.set_font("Helvetica", "", 9)
+        if data.empty:
+            pdf.cell(0, 8, "Nenhuma ocorrência registrada", ln=True)
+            pdf.ln(4)
+            return
+        headers = list(data.columns)
+        pdf.cell(0, 6, " | ".join(headers), ln=True)
+        for _, r in data.iterrows():
+            row = " | ".join(str(v) for v in r)
+            pdf.cell(0, 6, row, ln=True)
+        pdf.ln(4)
+
+    cam_prob = cam[cam["Cam_Status"]!="OK"][["Local","Cam_Status","Cam_Total","Cam_Online"]]
+    alm_prob = alm[alm["Alm_Status"]!="100%"][["Local","Alm_Status","Alm_Total","Alm_Online"]]
+
+    add_table("Câmeras em manutenção/offline", cam_prob)
+    add_table("Alarmes em manutenção/offline", alm_prob)
+
+    out = BytesIO()
+    pdf.output(out)
+    out.seek(0)
+    return out.read()
 
 # ---------------- CONFIG ----------------
 st.set_page_config(page_title="Dashboard Operacional – CFTV & Alarmes",
