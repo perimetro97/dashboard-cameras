@@ -174,7 +174,6 @@ with col_logo:
     st.image(
     "https://raw.githubusercontent.com/perimetro97/dashboard-cameras/main/logo_perimetro.png",
     use_container_width=True)
-    else: st.write("**Grupo Perímetro**")
     st.markdown("</div>", unsafe_allow_html=True)
 with col_title:
     st.markdown(f"<h3 style='color:{CLR_BLUE};margin-bottom:-4px'>Dashboard Operacional – CFTV & Alarmes</h3>"
