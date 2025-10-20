@@ -137,79 +137,81 @@ st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
 # =========================
 @st.cache_data(show_spinner=False)
 def load_data(planilha_path: str):
-    # Lê tudo e depois recorta as linhas 4–47 (índices 3–47 no pandas, inclusive 47)
-    df = pd.read_excel(planilha_path, header=None)
-    # Garantia de ter colunas suficientes
-    for c in range(7):
-        if c not in df.columns:
-            df[c] = np.nan
+    # Lê a planilha inteira
+    df_raw = pd.read_excel(planilha_path, header=None)
 
-    # recorte linhas 3 até 47 (inclui 47)
-    df = df.iloc[3:48, :].copy()
+    # Procura a primeira linha onde há um texto parecido com "OK" ou "OFFLINE" ou "FALTANDO"
+    start_index = None
+    for i, row in df_raw.iterrows():
+        if row.astype(str).str.contains("OK|OFFLINE|FALTANDO", case=False, na=False).any():
+            start_index = max(i - 1, 0)  # sobe 1 linha (a de cabeçalho)
+            break
+
+    # Se não encontrar, assume início padrão
+    if start_index is None:
+        start_index = 3  # padrão (linha 4 no Excel)
+
+    # Corta os dados a partir daí (linha de cabeçalho + dados)
+    df = df_raw.iloc[start_index:, :8].copy()
+
+    # Força 7 colunas no máximo (A até G)
+    if df.shape[1] < 7:
+        for _ in range(7 - df.shape[1]):
+            df[df.shape[1]] = np.nan
+    elif df.shape[1] > 7:
+        df = df.iloc[:, :7]
+
+    # Renomeia colunas fixas
     df.columns = ["A_Local", "B_TotalCam", "C_OnlineCam", "D_StatusCam",
                   "E_TotalAlm", "F_OnlineAlm", "G_PercentAlm"]
 
-    # Normalizações
-    # Local como string sem espaços extras
+    # Remove linhas totalmente vazias
+    df = df.dropna(how="all")
+
+    # Remove linhas que são títulos (ex: “RELATÓRIO DE CÂMERAS...”)
+    df = df[~df["A_Local"].astype(str).str.contains("RELATÓRIO|CÂMERAS|ALARMES|POSTOS", case=False, na=False)]
+
+    # Limpa espaços
     df["A_Local"] = df["A_Local"].astype(str).str.strip()
 
-    # Numéricos seguros
+    # Converte números
     for col in ["B_TotalCam", "C_OnlineCam", "E_TotalAlm", "F_OnlineAlm"]:
         df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0).astype(int)
 
-    # Percentual alarmes (se G estiver vazio/errado, recalcular)
+    # Percentual de alarmes
     def calc_percent(row):
-        tot, on = row["E_TotalAlm"], row["F_OnlineAlm"]
-        if tot <= 0:
-            return 0.0
-        return round((on / tot) * 100.0, 2)
+        if row["E_TotalAlm"] <= 0:
+            return 0
+        return round((row["F_OnlineAlm"] / row["E_TotalAlm"]) * 100, 2)
 
-    # Tenta ler números da coluna G, se houver texto tipo "50% online"
-    def parse_g(v):
-        if pd.isna(v):
-            return np.nan
-        s = str(v).strip().replace(",", ".")
-        if "%" in s:
-            try:
-                return float(s.split("%")[0])
-            except:
-                return np.nan
-        try:
-            return float(s)
-        except:
-            return np.nan
+    df["G_PercentAlm"] = df["G_PercentAlm"].apply(lambda v: float(str(v).replace('%','').strip()) if pd.notna(v) else np.nan)
+    df["G_PercentAlm"] = np.where(df["G_PercentAlm"].notna(), df["G_PercentAlm"], df.apply(calc_percent, axis=1))
 
-    g_raw = df["G_PercentAlm"].apply(parse_g)
-    g_calc = df.apply(calc_percent, axis=1)
-    df["G_PercentAlm"] = np.where(g_raw.notna(), g_raw, g_calc)
-
-    # Derivar status de câmeras se D estiver vazio
+    # Status de câmeras
     def status_cam(row):
         total, online = row["B_TotalCam"], row["C_OnlineCam"]
         s = str(row["D_StatusCam"]).strip().upper()
-        if s and s != "NAN":
-            return s  # usar o que já veio
+        if "OK" in s or "EXCESSO" in s or "FALTANDO" in s or "OFFLINE" in s:
+            return s
         if total == 0:
-            return "SEM DADO"
+            return "SEM DADOS"
         if online == total:
             return "OK"
         if online > total:
             return "EXCESSO"
         if online == 0:
             return "OFFLINE"
-        # faltando X
-        falt = max(total - online, 0)
-        return f"FALTANDO {falt}"
+        return f"FALTANDO {total - online}"
 
     df["D_StatusCam"] = df.apply(status_cam, axis=1)
 
-    # Status alarmes categórico
+    # Status de alarmes
     def status_alm(p):
-        if p >= 99.99:
+        if p >= 99.9:
             return "100%"
-        if p >= 66.0:
+        if p >= 66:
             return "PARCIAL (≥66%)"
-        if p >= 50.0:
+        if p >= 50:
             return "PARCIAL (50%)"
         if p > 0:
             return "PARCIAL (<50%)"
@@ -218,8 +220,6 @@ def load_data(planilha_path: str):
     df["Alarmes_Status"] = df["G_PercentAlm"].apply(status_alm)
 
     return df
-
-df = load_data(PLANILHA)
 
 # =========================
 # HELPERS UI / MÉTRICAS
