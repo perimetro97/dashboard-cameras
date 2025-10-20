@@ -276,7 +276,78 @@ if df.empty:
 has_query = bool(query.strip())
 dfv = df if not has_query else df[df["Local"].str.contains(query.strip(), case=False, na=False)]
 
-# ------------------ RENDER: GERAL ------------------
+# ------------------ RENDER: CÂMERAS ------------------
+def render_cameras(dfx: pd.DataFrame):
+    base = dfx[dfx["Cam_Total"] > 0]
+    st.markdown("#### 📷 Câmeras")
+
+    total = int(base["Cam_Total"].sum())
+    online = int(base["Cam_Online"].sum())
+    offline = max(total - online, 0)
+    locais_manut = int(((base["Cam_OfflineBool"]) | (base["Cam_Falta"] > 0)).sum())
+
+    c1, c2, c3, c4 = st.columns(4)
+    c1.markdown(f"<div class='card'><div class='metric-sub'>Total</div><div class='metric'>{total}</div></div>", unsafe_allow_html=True)
+    c2.markdown(f"<div class='card'><div class='metric-sub'>Online</div><div class='metric' style='color:{CLR_GREEN};'>{online}</div></div>", unsafe_allow_html=True)
+    c3.markdown(f"<div class='card'><div class='metric-sub'>Offline</div><div class='metric' style='color:{CLR_RED};'>{offline}</div></div>", unsafe_allow_html=True)
+    c4.markdown(f"<div class='card'><div class='metric-sub'>Locais p/ manutenção</div><div class='metric' style='color:{CLR_ORANGE};'>{locais_manut}</div></div>", unsafe_allow_html=True)
+
+    rows = base.copy()
+    rows["__prio"] = np.where(rows["Cam_OfflineBool"], 2, np.where(rows["Cam_Falta"] > 0, 1, 0))
+    rows = rows[rows["__prio"] > 0].sort_values(["__prio", "Cam_Falta"], ascending=[False, False])
+
+    st.markdown("#### Locais para manutenção / offline")
+    if rows.empty:
+        st.info("Nenhum local em manutenção. Use a busca para visualizar locais 100% OK.")
+    for _, r in rows.iterrows():
+        status = "OFFLINE" if r["Cam_OfflineBool"] else f"FALTANDO {int(r['Cam_Falta'])}"
+        cls = "offline" if "OFFLINE" in status else ""
+        st.markdown(
+            f"<div class='local-card {cls}'>"
+            f"<div class='local-title'>📍 {r['Local']} — {chip(status, 'off' if 'OFFLINE' in status else 'warn')}</div>"
+            f"<div class='local-info'>Total: {r['Cam_Total']} • Online: {r['Cam_Online']}</div>"
+            f"</div>",
+            unsafe_allow_html=True
+        )
+
+    bar_values({"Online": online, "Offline": offline, "Locais p/ manutenção": locais_manut}, "Resumo de Câmeras")
+
+
+# ------------------ RENDER: ALARMES ------------------
+def render_alarms(dfx: pd.DataFrame):
+    base = dfx[dfx["Alm_Total"] > 0]
+    st.markdown("#### 🚨 Alarmes")
+
+    total = int(base["Alm_Total"].sum())
+    online = int(base["Alm_Online"].sum())
+    offline = max(total - online, 0)
+    locais_manut = int(((base["Alm_OfflineBool"]) | (base["Alm_Falta"] > 0)).sum())
+
+    a1, a2, a3, a4 = st.columns(4)
+    a1.markdown(f"<div class='card'><div class='metric-sub'>Centrais Totais</div><div class='metric'>{total}</div></div>", unsafe_allow_html=True)
+    a2.markdown(f"<div class='card'><div class='metric-sub'>Online</div><div class='metric' style='color:{CLR_GREEN};'>{online}</div></div>", unsafe_allow_html=True)
+    a3.markdown(f"<div class='card'><div class='metric-sub'>Offline</div><div class='metric' style='color:{CLR_RED};'>{offline}</div></div>", unsafe_allow_html=True)
+    a4.markdown(f"<div class='card'><div class='metric-sub'>Locais p/ manutenção</div><div class='metric' style='color:{CLR_ORANGE};'>{locais_manut}</div></div>", unsafe_allow_html=True)
+
+    rows = base.copy()
+    rows["__prio"] = np.where(rows["Alm_OfflineBool"], 2, np.where(rows["Alm_Falta"] > 0, 1, 0))
+    rows = rows[rows["__prio"] > 0].sort_values(["__prio", "Alm_Falta"], ascending=[False, False])
+
+    st.markdown("#### Locais para manutenção / offline")
+    if rows.empty:
+        st.info("Nenhum local em manutenção. Use a busca para visualizar locais 100%.")
+    for _, r in rows.iterrows():
+        status = "OFFLINE" if r["Alm_OfflineBool"] else f"PARCIAL ({int(r['Alm_Online'])}/{int(r['Alm_Total'])})"
+        cls = "offline" if "OFFLINE" in status else ""
+        st.markdown(
+            f"<div class='local-card {cls}'>"
+            f"<div class='local-title'>📍 {r['Local']} — {chip(status, 'off' if 'OFFLINE' in status else 'warn')}</div>"
+            f"<div class='local-info'>Total: {r['Alm_Total']} • Online: {r['Alm_Online']}</div>"
+            f"</div>",
+            unsafe_allow_html=True
+        )
+
+    bar_values({"Online": online, "Offline": offline, "Locais p/ manutenção": locais_manut}, "Resumo de Alarmes")
 def render_geral(dfx: pd.DataFrame):
     st.markdown("#### 📊 Geral (Câmeras + Alarmes)")
 
