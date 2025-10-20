@@ -1,5 +1,5 @@
 # ============================================================
-# Dashboard Operacional – Grupo Perímetro (v5.0)
+# Dashboard Operacional – Grupo Perímetro (v5.2)
 # CFTV & Alarmes • Visual Pro • PDF desativado temporariamente
 # ============================================================
 
@@ -8,7 +8,6 @@ import requests
 from io import BytesIO
 from datetime import datetime
 import pandas as pd
-import numpy as np
 import plotly.express as px
 from PIL import Image
 import streamlit as st
@@ -57,34 +56,34 @@ def carregar_logo():
 st.markdown("""
     <div style="
         background: linear-gradient(90deg, #004AAD, #FF6600);
-        padding: 12px 0;
+        padding: 10px 0;
         border-radius: 8px;
-        margin-bottom: 10px;">
+        margin-bottom: 12px;">
     </div>
 """, unsafe_allow_html=True)
 
 # Exibir logo e título
 carregar_logo()
 st.markdown(
-    "<h1 style='text-align:center; color:black; font-weight:600; margin-top:-5px;'>Dashboard Operacional – CFTV & Alarmes</h1>",
+    "<h1 style='text-align:center; color:black; font-weight:600; margin-top:-10px;'>Dashboard Operacional – CFTV & Alarmes</h1>",
     unsafe_allow_html=True
 )
 
 # ------------------------------------------------------------
-# ESTILOS (botões e campo de busca)
+# ESTILOS (botões, pesquisa e layout)
 # ------------------------------------------------------------
 st.markdown("""
 <style>
 /* Botões */
 .stButton>button {
-    background-color: #f2f2f2;
+    background-color: #f5f5f5;
     color: #333;
     border: 1px solid #ccc;
     border-radius: 8px;
     padding: 6px 18px;
     transition: 0.3s;
     font-weight: 500;
-    margin-right: 6px;
+    margin-right: 8px;
 }
 .stButton>button:hover {
     transform: scale(1.05);
@@ -99,13 +98,18 @@ input[type="text"] {
     border-radius: 8px !important;
     box-shadow: 0px 0px 6px rgba(0, 74, 173, 0.3);
 }
+
+/* Centralizar conteúdo */
+.block-container {
+    padding-top: 1rem;
+}
 </style>
 """, unsafe_allow_html=True)
 
 # ------------------------------------------------------------
-# CONTROLE DE ABAS
+# BARRA DE CONTROLE
 # ------------------------------------------------------------
-col1, col2, col3 = st.columns([1,1,1])
+col1, col2, col3, col4 = st.columns([1,1,1,3])
 with col1:
     if st.button("📷 Câmeras"):
         aba = "cameras"
@@ -115,9 +119,11 @@ with col2:
 with col3:
     if st.button("📊 Geral"):
         aba = "geral"
+with col4:
+    st.text_input("🔎 Pesquisar local:", placeholder="Digite o nome do local")
 
 # ------------------------------------------------------------
-# LEITURA DOS DADOS
+# LEITURA DOS DADOS E AJUSTE AUTOMÁTICO
 # ------------------------------------------------------------
 try:
     df = pd.read_excel(PLANILHA)
@@ -126,8 +132,41 @@ except Exception as e:
     st.error(f"Erro ao carregar planilha: {e}")
     st.stop()
 
+# Normaliza nomes de colunas
+df.columns = (
+    df.columns.str.lower()
+    .str.replace(" ", "_")
+    .str.replace("ç", "c")
+    .str.replace("ã", "a")
+    .str.replace("á", "a")
+    .str.replace("â", "a")
+    .str.replace("é", "e")
+    .str.replace("ê", "e")
+    .str.replace("í", "i")
+    .str.replace("ó", "o")
+    .str.replace("ô", "o")
+    .str.replace("õ", "o")
+    .str.replace("ú", "u")
+)
+
+# Detecta automaticamente colunas
+col_total_cam = next((c for c in df.columns if "total" in c and "camera" in c), None)
+col_online_cam = next((c for c in df.columns if "online" in c and "camera" in c), None)
+col_total_alarm = next((c for c in df.columns if "total" in c and "alarme" in c), None)
+col_online_alarm = next((c for c in df.columns if "online" in c and "alarme" in c), None)
+
+if not all([col_total_cam, col_online_cam, col_total_alarm, col_online_alarm]):
+    st.warning("⚠️ Não foi possível identificar todas as colunas. Verifique os nomes na planilha.")
+else:
+    total_cameras = int(df[col_total_cam].sum())
+    cameras_online = int(df[col_online_cam].sum())
+    cameras_offline = total_cameras - cameras_online
+    total_alarmes = int(df[col_total_alarm].sum())
+    alarmes_online = int(df[col_online_alarm].sum())
+    alarmes_offline = total_alarmes - alarmes_online
+
 # ------------------------------------------------------------
-# FUNÇÕES AUXILIARES
+# FUNÇÃO DE GRÁFICO
 # ------------------------------------------------------------
 def gerar_grafico(titulo, dados):
     fig = px.bar(
@@ -159,18 +198,13 @@ if 'aba' not in locals():
 
 if aba == "geral":
     st.subheader("📊 Geral (Câmeras + Alarmes)")
-
-    total_cameras = int(df['Total_Cameras'].sum()) if 'Total_Cameras' in df.columns else 0
-    cameras_online = int(df['Online_Cameras'].sum()) if 'Online_Cameras' in df.columns else 0
-    cameras_offline = total_cameras - cameras_online
-    total_alarmes = int(df['Total_Alarmes'].sum()) if 'Total_Alarmes' in df.columns else 0
-    alarmes_online = int(df['Online_Alarmes'].sum()) if 'Online_Alarmes' in df.columns else 0
-    alarmes_offline = total_alarmes - alarmes_online
-
-    col1, col2, col3 = st.columns(3)
+    col1, col2, col3, col4, col5, col6 = st.columns(6)
     col1.metric("Câmeras Online", cameras_online)
-    col2.metric("Alarmes Online", alarmes_online)
+    col2.metric("Câmeras Offline", cameras_offline)
     col3.metric("Total de Câmeras", total_cameras)
+    col4.metric("Alarmes Online", alarmes_online)
+    col5.metric("Alarmes Offline", alarmes_offline)
+    col6.metric("Total de Alarmes", total_alarmes)
 
     st.markdown("### Resumo Geral")
     dados_gerais = pd.DataFrame({
@@ -184,18 +218,13 @@ if aba == "geral":
 # ------------------------------------------------------------
 elif aba == "cameras":
     st.subheader("📷 Monitoramento de Câmeras")
-    total = int(df['Total_Cameras'].sum()) if 'Total_Cameras' in df.columns else 0
-    online = int(df['Online_Cameras'].sum()) if 'Online_Cameras' in df.columns else 0
-    offline = total - online
-
     col1, col2, col3 = st.columns(3)
-    col1.metric("Total", total)
-    col2.metric("Online", online)
-    col3.metric("Offline", offline)
-
+    col1.metric("Total", total_cameras)
+    col2.metric("Online", cameras_online)
+    col3.metric("Offline", cameras_offline)
     dados = pd.DataFrame({
         'Status': ['Online', 'Offline'],
-        'Quantidade': [online, offline]
+        'Quantidade': [cameras_online, cameras_offline]
     })
     gerar_grafico("Gráfico de Câmeras", dados)
 
@@ -204,17 +233,12 @@ elif aba == "cameras":
 # ------------------------------------------------------------
 elif aba == "alarmes":
     st.subheader("🔔 Monitoramento de Alarmes")
-    total = int(df['Total_Alarmes'].sum()) if 'Total_Alarmes' in df.columns else 0
-    online = int(df['Online_Alarmes'].sum()) if 'Online_Alarmes' in df.columns else 0
-    offline = total - online
-
     col1, col2, col3 = st.columns(3)
-    col1.metric("Total", total)
-    col2.metric("Online", online)
-    col3.metric("Offline", offline)
-
+    col1.metric("Total", total_alarmes)
+    col2.metric("Online", alarmes_online)
+    col3.metric("Offline", alarmes_offline)
     dados = pd.DataFrame({
         'Status': ['Online', 'Offline'],
-        'Quantidade': [online, offline]
+        'Quantidade': [alarmes_online, alarmes_offline]
     })
     gerar_grafico("Gráfico de Alarmes", dados)
