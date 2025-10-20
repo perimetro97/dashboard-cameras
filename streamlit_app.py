@@ -195,10 +195,17 @@ def build_pdf_bytes(df: pd.DataFrame) -> bytes:
     return out.read()
 
 # ------------- HEADER -------------
-col_logo, col_title, col_search = st.columns([0.12, 0.58, 0.30])
+import base64
+
 with col_logo:
     st.markdown("<div class='logo-card'>", unsafe_allow_html=True)
-    st.image(get_logo_source(), use_container_width=True)
+    try:
+        logo_bytes = base64.b64decode(
+            "iVBORw0KGgoAAAANSUhEUgAAAoAAAAKACAYAAAC0HzYfAAA..."  # <– aqui entra a logo codificada em base64
+        )
+        st.image(logo_bytes, use_container_width=True)
+    except Exception as e:
+        st.warning("⚠️ Logo não carregada (embed falhou), mas o sistema continua funcionando.")
     st.markdown("</div>", unsafe_allow_html=True)
 
 with col_title:
