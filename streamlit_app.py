@@ -372,7 +372,7 @@ def render_alarms(dfx: pd.DataFrame):
 
 # ------------------ RENDER: GERAL ------------------
 def render_geral(dfx: pd.DataFrame):
-    st.markdown(f"#### <img src='📊' width='20' style='vertical-align:middle;margin-right:6px;'/> Geral (Câmeras + Alarmes)",
+    st.markdown(f"#### <img src='ICON RELATORIO' width='20' style='vertical-align:middle;margin-right:6px;'/> Geral (Câmeras + Alarmes)",
                 unsafe_allow_html=True)
 
     cam = dfx[dfx["Cam_Total"]>0]; alm = dfx[dfx["Alm_Total"]>0]
