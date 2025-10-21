@@ -1,4 +1,3 @@
-
 # =========================================================
 # Dashboard Operacional – Grupo Perímetro (v5.6.2 → patch)
 # CFTV & Alarmes • Visual Pro •
@@ -279,7 +278,7 @@ def tab_button(label, tab_name, key):
     st.markdown(js, unsafe_allow_html=True)
 
 # Mantidos os botões originais (sem mudar estética/layout)
-with b1: tab_button("📷 Câmeras", "btn_cam")
+with b1: tab_button("📷 Câmeras", "Câmeras", "btn_cam")
 with b2: tab_button("🚨 Alarmes", "Alarmes", "btn_alm")
 with b3: tab_button("📊 Geral",   "Geral",   "btn_ger")
 
@@ -372,7 +371,7 @@ def render_alarms(dfx: pd.DataFrame):
 
 # ------------------ RENDER: GERAL ------------------
 def render_geral(dfx: pd.DataFrame):
-    st.markdown(f"#### <img src='ICON RELATORIO' width='20' style='vertical-align:middle;margin-right:6px;'/> Geral (Câmeras + Alarmes)",
+    st.markdown(f"#### <img src='{ICON_RELATORIO}' width='20' style='vertical-align:middle;margin-right:6px;'/> Geral (Câmeras + Alarmes)",
                 unsafe_allow_html=True)
 
     cam = dfx[dfx["Cam_Total"]>0]; alm = dfx[dfx["Alm_Total"]>0]
