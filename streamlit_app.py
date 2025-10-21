@@ -279,7 +279,7 @@ def tab_button(label, tab_name, key):
     st.markdown(js, unsafe_allow_html=True)
 
 # Mantidos os botões originais (sem mudar estética/layout)
-with b1: tab_button("📷 Câmeras", "Câmeras", "btn_cam")
+with b1: tab_button("file:///C:/Users/Servidor%20Portaria/Desktop/assets/icones/camera.svg Câmeras", "Câmeras", "btn_cam")
 with b2: tab_button("🚨 Alarmes", "Alarmes", "btn_alm")
 with b3: tab_button("📊 Geral",   "Geral",   "btn_ger")
 
