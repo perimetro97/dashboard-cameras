@@ -1,11 +1,12 @@
 # =========================================================
-# Dashboard Operacional – Grupo Perímetro (v5.6.5)
+# Dashboard Operacional – Grupo Perímetro (v5.6.2 → patch)
 # CFTV & Alarmes • Visual Pro •
 # =========================================================
 import os, requests
 from datetime import datetime
 from io import BytesIO
 from pathlib import Path
+import pytz  # <-- adicionado para horário de Brasília
 
 import streamlit as st
 import pandas as pd
@@ -17,10 +18,8 @@ st.set_page_config(page_title="Dashboard Operacional – CFTV & Alarmes",
                    page_icon="📹", layout="wide")
 
 PLANILHA = "dados.xlsx"
-
-# Caminho absoluto no repo
 ROOT_PATH = Path(__file__).parent
-PLANILHA_PATH = ROOT_PATH / PLANILHA
+PLANILHA_PATH = ROOT_PATH / PLANILHA  # <-- garante caminho correto
 
 # Logo somente do repositório / arquivo (sem Base64)
 LOGO_FILE_CANDIDATES = [
@@ -29,14 +28,13 @@ LOGO_FILE_CANDIDATES = [
 ]
 LOGO_URL_RAW = "https://raw.githubusercontent.com/perimetro97/dashboard-cameras/main/logo.png"
 
-# Ícones do projeto
-ICON_PATH = ROOT_PATH / "assets" / "icones"
-ICON_CAMERA     = str(ICON_PATH / "camera.png").replace("\\", "/")
-ICON_ALARME     = str(ICON_PATH / "alarme.png").replace("\\", "/")
-ICON_ENGRENAGEM = str(ICON_PATH / "engrenagem.png").replace("\\", "/")
-ICON_RELATORIO  = str(ICON_PATH / "relatorio.png").replace("\\", "/")
+# Ícones na raiz do repositório (apenas para os títulos de seção)
+ICON_CAMERA     = "camera.png"
+ICON_ALARME     = "alarme.png"
+ICON_ENGRENAGEM = "engrenagem.png"
+ICON_RELATORIO  = "relatorio.png"
 
-# Paleta (mesma estética v5.6.2)
+# Paleta
 CLR_BG     = "#F5F6FA"
 CLR_PANEL  = "#FFFFFF"
 CLR_TEXT   = "#111827"  # preto suave
@@ -47,7 +45,7 @@ CLR_ORANGE = "#F37021"   # Laranja institucional
 CLR_GREEN  = "#16A34A"   # OK
 CLR_RED    = "#E11D48"   # Offline
 
-# ------------------ CSS (idêntico ao v5.6.2) ------------------
+# ------------------ CSS ------------------
 st.markdown(f"""
 <style>
   .stApp {{
@@ -58,6 +56,7 @@ st.markdown(f"""
   }}
   @keyframes fadein {{ from {{ opacity:0 }} to {{ opacity:1 }} }}
 
+  /* Barra superior com gradiente azul->laranja (modelo 18) */
   .top-wrap {{
     background: linear-gradient(90deg, {CLR_BLUE} 0%, {CLR_ORANGE} 100%);
     border-radius: 18px;
@@ -72,6 +71,7 @@ st.markdown(f"""
     padding: 8px;
     backdrop-filter: blur(3px);
   }}
+  /* Título preto, sem sombra */
   .title {{
     font-size: 28px; font-weight: 900; letter-spacing:.2px;
     color:{CLR_TEXT};
@@ -79,6 +79,7 @@ st.markdown(f"""
   }}
   .subtitle {{ font-size: 12px; color: rgba(17,24,39,.75); }}
 
+  /* Botões das abas – mais próximos e com hover */
   .btn-row .stButton>button {{
     background: #fff;
     color: {CLR_BLUE};
@@ -93,6 +94,7 @@ st.markdown(f"""
   .btn-row .stButton>button:hover {{ transform: translateY(-1px); box-shadow: 0 10px 22px rgba(0,0,0,.12); }}
   .btn-active {{ background: {CLR_BLUE} !important; color: #fff !important; }}
 
+  /* Cards */
   .card {{
     background:{CLR_PANEL}; border:1px solid {CLR_BORDER}; border-radius:16px; padding:16px;
     box-shadow: 0 10px 24px rgba(2,12,27,.06); margin-bottom: 12px;
@@ -102,11 +104,13 @@ st.markdown(f"""
   .metric {{ font-size:30px; font-weight:900; margin-top:2px }}
   .metric-sub {{ font-size:12px; color:{CLR_SUB} }}
 
+  /* Chips */
   .chip {{ font-weight:800; padding:4px 10px; border-radius:999px; font-size:12px; }}
   .ok   {{ color:{CLR_GREEN};  background:rgba(22,163,74,.12) }}
   .warn {{ color:{CLR_ORANGE}; background:rgba(243,112,33,.12) }}
   .off  {{ color:{CLR_RED};    background:rgba(225,29,72,.12) }}
 
+  /* Cartões de locais */
   .local-card {{
     background:#FAFBFF; border:1px solid {CLR_BORDER}; border-left:6px solid {CLR_ORANGE};
     border-radius:14px; padding:12px 14px; margin-bottom:10px;
@@ -115,6 +119,7 @@ st.markdown(f"""
   .local-title {{ font-weight:900; font-size:16px; }}
   .local-info  {{ color:{CLR_SUB}; font-size:12px; margin-top:2px; }}
 
+  /* Destaque discreto no campo de busca */
   .search-box .stTextInput>div>div>input {{
     border:1px solid {CLR_BORDER};
     box-shadow: 0 2px 8px rgba(11,102,195,.07);
@@ -122,7 +127,7 @@ st.markdown(f"""
 </style>
 """, unsafe_allow_html=True)
 
-# ------------------ LOGO ------------------
+# ------------------ LOGO (repositório/arquivo) ------------------
 def load_logo_bytes() -> bytes | None:
     for p in LOGO_FILE_CANDIDATES:
         if os.path.exists(p):
@@ -147,14 +152,13 @@ def _to_int(x):
     try: return int(float(s))
     except: return 0
 
-# Mantém a mesma lógica v5.6.2; apenas garante caminho correto
 @st.cache_data(show_spinner=False)
-def load_data(path_like) -> pd.DataFrame:
-    # prioriza o caminho absoluto (PLANILHA_PATH). Se não existir, tenta o string original.
-    path = Path(path_like) if isinstance(path_like, (str, Path)) else PLANILHA_PATH
-    if not path.exists():
-        path = PLANILHA_PATH
-    raw = pd.read_excel(path, header=None)
+def load_data(path: str) -> pd.DataFrame:
+    # tenta caminho absoluto do repositório primeiro
+    p = Path(path)
+    if not p.exists():
+        p = PLANILHA_PATH
+    raw = pd.read_excel(p, header=None)
     raw = raw.dropna(how="all").iloc[:, 0:7]
     raw.columns = ["Local","Cam_Total","Cam_Online","Cam_Status","Alm_Total","Alm_Online","Alm_Status"]
     raw = raw.dropna(subset=["Local"])
@@ -165,15 +169,12 @@ def load_data(path_like) -> pd.DataFrame:
     raw["Alm_Falta"] = (raw["Alm_Total"] - raw["Alm_Online"]).clip(lower=0)
     raw["Cam_OfflineBool"] = (raw["Cam_Total"]>0) & (raw["Cam_Online"]==0)
     raw["Alm_OfflineBool"] = (raw["Alm_Total"]>0) & (raw["Alm_Online"]==0)
-
-    # Status (mantém estética/semântica)
     def cam_status(r):
         if r["Cam_Total"]==0: return "SEM CÂMERAS"
         if r["Cam_Online"]==0: return "OFFLINE"
         if r["Cam_Online"]<r["Cam_Total"]: return f"FALTANDO {int(r['Cam_Falta'])}"
         return "OK"
     raw["Cam_Status"] = raw.apply(cam_status, axis=1)
-
     def alm_status(r):
         if r["Alm_Total"]==0: return "SEM ALARME"
         if r["Alm_Online"]==0: return "OFFLINE"
@@ -186,7 +187,7 @@ def chip(texto, tipo):
     cls = "ok" if tipo=="ok" else ("warn" if tipo=="warn" else "off")
     return f"<span class='chip {cls}'>{texto}</span>"
 
-# ------------------ GRÁFICO (inalterado) ------------------
+# ------------------ GRAFICO ------------------
 def bar_values(values: dict, title: str):
     dfc = pd.DataFrame({
         "Categoria": list(values.keys()),
@@ -244,9 +245,11 @@ with c_logo:
     st.markdown("</div>", unsafe_allow_html=True)
 
 with c_title:
+    # <-- apenas esta linha mudou para horário de Brasília
+    hora_brasilia = datetime.now(pytz.timezone("America/Sao_Paulo"))
     st.markdown(
         f"<div class='title'>Dashboard Operacional – CFTV &amp; Alarmes</div>"
-        f"<div class='subtitle'>Atualizado em {datetime.now().strftime('%d/%m/%Y %H:%M')}</div>",
+        f"<div class='subtitle'>Atualizado em {hora_brasilia.strftime('%d/%m/%Y %H:%M')}</div>",
         unsafe_allow_html=True
     )
 with c_search:
@@ -255,7 +258,7 @@ with c_search:
     st.markdown("</div>", unsafe_allow_html=True)
 st.markdown("</div>", unsafe_allow_html=True)
 
-# ------------------ ABAS (inalteradas) ------------------
+# ------------------ ABAS ------------------
 st.markdown("<div class='btn-row'>", unsafe_allow_html=True)
 b1, b2, b3, _ = st.columns([0.11,0.11,0.11,0.67], gap="small")
 if "tab" not in st.session_state: st.session_state.tab = "Câmeras"
@@ -274,41 +277,28 @@ def tab_button(label, tab_name, key):
     """
     st.markdown(js, unsafe_allow_html=True)
 
-# Substitui emojis das abas por ícones (mantendo layout)
-with b1:
-    st.markdown(f"<div style='display:flex;align-items:center;gap:6px;'><img src='{ICON_CAMERA}' width='18'/><span></span></div>", unsafe_allow_html=True)
-    tab_button("Câmeras", "Câmeras", "btn_cam")
-with b2:
-    st.markdown(f"<div style='display:flex;align-items:center;gap:6px;'><img src='{ICON_ALARME}' width='18'/><span></span></div>", unsafe_allow_html=True)
-    tab_button("Alarmes", "Alarmes", "btn_alm")
-with b3:
-    st.markdown(f"<div style='display:flex;align-items:center;gap:6px;'><img src='{ICON_RELATORIO}' width='18'/><span></span></div>", unsafe_allow_html=True)
-    tab_button("Geral",   "Geral",   "btn_ger")
+# Mantidos os botões originais (sem mudar estética/layout)
+with b1: tab_button("📷 Câmeras", "Câmeras", "btn_cam")
+with b2: tab_button("🚨 Alarmes", "Alarmes", "btn_alm")
+with b3: tab_button("📊 Geral",   "Geral",   "btn_ger")
 
 st.divider()
 
 # ------------------ DADOS ------------------
-try:
-    df = load_data(PLANILHA_PATH)
-except Exception as e:
-    st.error("Não foi possível ler dados da planilha `dados.xlsx`. Verifique se está na raiz do repositório.")
-    st.exception(e)
-    st.stop()
-
+df = load_data(PLANILHA)  # a função já tenta resolver o caminho absoluto
 if df.empty:
-    st.error("Planilha sem dados válidos (colunas A..G).")
+    st.error("Não foi possível ler dados da planilha `dados.xlsx`. Verifique se está na raiz.")
     st.stop()
 
 has_query = bool(query.strip())
-dfv = df if not has_query else df[df["Local"].astype(str).str.contains(query.strip(), case=False, na=False)]
+dfv = df if not has_query else df[df["Local"].str.contains(query.strip(), case=False, na=False)]
 
 # ------------------ RENDER: CÂMERAS ------------------
 def render_cameras(dfx: pd.DataFrame):
     base = dfx[dfx["Cam_Total"] > 0]
-    st.markdown(
-        f"<h4 style='display:flex;align-items:center;gap:8px;'>"
-        f"<img src='{ICON_CAMERA}' width='24'/> Câmeras</h4>", unsafe_allow_html=True
-    )
+    # Título com ícone da raiz (sem alterar o resto da estética)
+    st.markdown(f"#### <img src='{ICON_CAMERA}' width='20' style='vertical-align:middle;margin-right:6px;'/> Câmeras",
+                unsafe_allow_html=True)
 
     total = int(base["Cam_Total"].sum())
     online = int(base["Cam_Online"].sum())
@@ -341,13 +331,12 @@ def render_cameras(dfx: pd.DataFrame):
 
     bar_values({"Online": online, "Offline": offline, "Locais p/ manutenção": locais_manut}, "Resumo de Câmeras")
 
+
 # ------------------ RENDER: ALARMES ------------------
 def render_alarms(dfx: pd.DataFrame):
     base = dfx[dfx["Alm_Total"] > 0]
-    st.markdown(
-        f"<h4 style='display:flex;align-items:center;gap:8px;'>"
-        f"<img src='{ICON_ALARME}' width='24'/> Alarmes</h4>", unsafe_allow_html=True
-    )
+    st.markdown(f"#### <img src='{ICON_ALARME}' width='20' style='vertical-align:middle;margin-right:6px;'/> Alarmes",
+                unsafe_allow_html=True)
 
     total = int(base["Alm_Total"].sum())
     online = int(base["Alm_Online"].sum())
@@ -382,17 +371,15 @@ def render_alarms(dfx: pd.DataFrame):
 
 # ------------------ RENDER: GERAL ------------------
 def render_geral(dfx: pd.DataFrame):
-    st.markdown(
-        f"<h4 style='display:flex;align-items:center;gap:8px;'>"
-        f"<img src='{ICON_RELATORIO}' width='24'/> Geral (Câmeras + Alarmes)</h4>",
-        unsafe_allow_html=True
-    )
+    st.markdown(f"#### <img src='{ICON_RELATORIO}' width='20' style='vertical-align:middle;margin-right:6px;'/> Geral (Câmeras + Alarmes)",
+                unsafe_allow_html=True)
 
     cam = dfx[dfx["Cam_Total"]>0]; alm = dfx[dfx["Alm_Total"]>0]
     cam_tot, cam_on = int(cam["Cam_Total"].sum()), int(cam["Cam_Online"].sum())
     alm_tot, alm_on = int(alm["Alm_Total"].sum()), int(alm["Alm_Online"].sum())
     cam_off, alm_off = cam_tot-cam_on, alm_tot-alm_on
 
+    # Locais p/ manutenção (inalterado)
     locais_manut = int(((dfx["Cam_OfflineBool"]) | (dfx["Cam_Falta"]>0) |
                         (dfx["Alm_OfflineBool"]) | (dfx["Alm_Falta"]>0)).sum())
 
@@ -409,7 +396,7 @@ def render_geral(dfx: pd.DataFrame):
         "Resumo Geral"
     )
 
-    # --------- RELATÓRIO PDF: Local | Câmeras Faltantes | Alarmes Faltantes ----------
+    # --------- Relatório PDF (apenas locais com falhas) ---------
     st.markdown("### 📄 Relatório de Locais com Problemas")
     if st.button("🖨️ Gerar Relatório PDF"):
         faltando = dfx[(dfx["Cam_Falta"] > 0) | (dfx["Alm_Falta"] > 0)].copy()
@@ -417,12 +404,10 @@ def render_geral(dfx: pd.DataFrame):
         if faltando.empty:
             st.info("Nenhum local com falhas no momento.")
         else:
-            # Gera somente as três colunas solicitadas
             table_df = faltando.loc[:, ["Local", "Cam_Falta", "Alm_Falta"]].rename(
                 columns={"Cam_Falta": "Câmeras Faltantes", "Alm_Falta": "Alarmes Faltantes"}
             )
 
-            # Geração do PDF (import dentro do bloco pra evitar overhead ao carregar app)
             from reportlab.lib.pagesizes import A4
             from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
             from reportlab.lib import colors
@@ -436,7 +421,7 @@ def render_geral(dfx: pd.DataFrame):
             title = Paragraph("<b>Relatório de Locais com Falhas</b>", styles["Title"])
             elements.append(title)
             elements.append(Spacer(1, 10))
-            subtitle = Paragraph(f"Gerado em: {datetime.now().strftime('%d/%m/%Y %H:%M')}", styles["Normal"])
+            subtitle = Paragraph(f"Gerado em: {datetime.now(pytz.timezone('America/Sao_Paulo')).strftime('%d/%m/%Y %H:%M')}", styles["Normal"])
             elements.append(subtitle)
             elements.append(Spacer(1, 12))
 
