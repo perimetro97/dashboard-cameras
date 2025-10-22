@@ -304,10 +304,8 @@ st.divider()
 # Agora LENDO DIRETO DO DRIVE (sem mexer na assinatura da função)
 df = load_data(DRIVE_URL)
 if df.empty:
-    st.error("Não foi possível ler dados do Google Drive. Verifique o link e permissões.")
+    st.error("❌ Não foi possível ler dados do Google Drive. Verifique o link e permissões.")
     st.stop()
-else:
-    st.info("✅ Dados carregados automaticamente do Google Drive (Excel).")
 
 has_query = bool(query.strip())
 dfv = df if not has_query else df[df["Local"].str.contains(query.strip(), case=False, na=False)]
@@ -315,8 +313,7 @@ dfv = df if not has_query else df[df["Local"].str.contains(query.strip(), case=F
 # ------------------ RENDER: CÂMERAS ------------------
 def render_cameras(dfx: pd.DataFrame):
     base = dfx[dfx["Cam_Total"] > 0]
-    # Título com ícone da raiz
-    st.markdown(f"#### <img src='{ICON_CAMERA}' width='20' style='vertical-align:middle;margin-right:6px;'/> Câmeras",
+    st.markdown(f"#### <img src='{ICON_CAMERA}' width='22' style='vertical-align:middle;margin-right:6px;'/> Câmeras",
                 unsafe_allow_html=True)
 
     total = int(base["Cam_Total"].sum())
@@ -342,7 +339,7 @@ def render_cameras(dfx: pd.DataFrame):
         cls = "offline" if "OFFLINE" in status else ""
         st.markdown(
             f"<div class='local-card {cls}'>"
-            f"<div class='local-title'>📍 {r['Local']} — {chip(status, 'off' if 'OFFLINE' in status else 'warn')}</div>"
+            f"<div class='local-title'><img src='{ICON_CAMERA}' width='16' style='vertical-align:middle;margin-right:4px;'/> {r['Local']} — {chip(status, 'off' if 'OFFLINE' in status else 'warn')}</div>"
             f"<div class='local-info'>Total: {r['Cam_Total']} • Online: {r['Cam_Online']}</div>"
             f"</div>",
             unsafe_allow_html=True
@@ -354,7 +351,7 @@ def render_cameras(dfx: pd.DataFrame):
 # ------------------ RENDER: ALARMES ------------------
 def render_alarms(dfx: pd.DataFrame):
     base = dfx[dfx["Alm_Total"] > 0]
-    st.markdown(f"#### <img src='{ICON_ALARME}' width='20' style='vertical-align:middle;margin-right:6px;'/> Alarmes",
+    st.markdown(f"#### <img src='{ICON_ALARME}' width='22' style='vertical-align:middle;margin-right:6px;'/> Alarmes",
                 unsafe_allow_html=True)
 
     total = int(base["Alm_Total"].sum())
@@ -380,7 +377,7 @@ def render_alarms(dfx: pd.DataFrame):
         cls = "offline" if "OFFLINE" in status else ""
         st.markdown(
             f"<div class='local-card {cls}'>"
-            f"<div class='local-title'>📍 {r['Local']} — {chip(status, 'off' if 'OFFLINE' in status else 'warn')}</div>"
+            f"<div class='local-title'><img src='{ICON_ALARME}' width='16' style='vertical-align:middle;margin-right:4px;'/> {r['Local']} — {chip(status, 'off' if 'OFFLINE' in status else 'warn')}</div>"
             f"<div class='local-info'>Total: {r['Alm_Total']} • Online: {r['Alm_Online']}</div>"
             f"</div>",
             unsafe_allow_html=True
@@ -388,9 +385,10 @@ def render_alarms(dfx: pd.DataFrame):
 
     bar_values({"Online": online, "Offline": offline, "Locais p/ manutenção": locais_manut}, "Resumo de Alarmes")
 
+
 # ------------------ RENDER: GERAL ------------------
 def render_geral(dfx: pd.DataFrame):
-    st.markdown(f"#### <img src='{ICON_RELATORIO}' width='20' style='vertical-align:middle;margin-right:6px;'/> Geral (Câmeras + Alarmes)",
+    st.markdown(f"#### <img src='{ICON_RELATORIO}' width='22' style='vertical-align:middle;margin-right:6px;'/> Geral (Câmeras + Alarmes)",
                 unsafe_allow_html=True)
 
     cam = dfx[dfx["Cam_Total"]>0]; alm = dfx[dfx["Alm_Total"]>0]
@@ -398,7 +396,6 @@ def render_geral(dfx: pd.DataFrame):
     alm_tot, alm_on = int(alm["Alm_Total"].sum()), int(alm["Alm_Online"].sum())
     cam_off, alm_off = cam_tot-cam_on, alm_tot-alm_on
 
-    # Locais p/ manutenção (inalterado)
     locais_manut = int(((dfx["Cam_OfflineBool"]) | (dfx["Cam_Falta"]>0) |
                         (dfx["Alm_OfflineBool"]) | (dfx["Alm_Falta"]>0)).sum())
 
@@ -415,7 +412,7 @@ def render_geral(dfx: pd.DataFrame):
         "Resumo Geral"
     )
 
-    # --------- Relatório PDF (apenas locais com falhas) ---------
+    # --------- Relatório PDF (agora com logo) ---------
     st.markdown("### 📄 Relatório de Locais com Problemas")
     if st.button("🖨️ Gerar Relatório PDF"):
         faltando = dfx[(dfx["Cam_Falta"] > 0) | (dfx["Alm_Falta"] > 0)].copy()
@@ -428,7 +425,7 @@ def render_geral(dfx: pd.DataFrame):
             )
 
             from reportlab.lib.pagesizes import A4
-            from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+            from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image
             from reportlab.lib import colors
             from reportlab.lib.styles import getSampleStyleSheet
 
@@ -436,6 +433,16 @@ def render_geral(dfx: pd.DataFrame):
             doc = SimpleDocTemplate(pdf_name, pagesize=A4)
             styles = getSampleStyleSheet()
             elements = []
+
+            # LOGO NO TOPO DO PDF
+            logo_path = None
+            for p in LOGO_FILE_CANDIDATES:
+                if os.path.exists(p):
+                    logo_path = p
+                    break
+            if logo_path:
+                elements.append(Image(logo_path, width=120, height=40))
+                elements.append(Spacer(1, 8))
 
             title = Paragraph("<b>Relatório de Locais com Falhas</b>", styles["Title"])
             elements.append(title)
@@ -450,7 +457,7 @@ def render_geral(dfx: pd.DataFrame):
 
             table = Table(data, repeatRows=1)
             table.setStyle(TableStyle([
-                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#1B1F3B")),  # azul da logo
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#1B1F3B")),
                 ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
                 ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
                 ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
@@ -468,14 +475,3 @@ def render_geral(dfx: pd.DataFrame):
                     file_name=pdf_name,
                     mime="application/pdf"
                 )
-
-# ------------------ DISPATCH ------------------
-tab = st.session_state.tab
-if tab == "Câmeras":
-    render_cameras(dfv)
-elif tab == "Alarmes":
-    render_alarms(dfv)
-else:
-    render_geral(dfv)
-
-st.caption("© Grupo Perímetro & Monitoramento • Dashboard Operacional")
