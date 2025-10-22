@@ -458,9 +458,9 @@ def render_geral(dfx: pd.DataFrame):
 
             try:
                 if logo_path:
-                    im = Image(logo_path, width=120)  # preserva proporção
+                    im = Image(logo_path, width=120, height=60)  # preserva proporção
                 elif _logo_bytes:
-                    im = Image(BytesIO(_logo_bytes), width=120)
+                    im = Image(BytesIO(_logo_bytes), width=120, height=60)
                 else:
                     im = None
                 if im:
@@ -470,7 +470,7 @@ def render_geral(dfx: pd.DataFrame):
             except Exception:
                 pass
 
-            title = Paragraph("<b>Relatório de Locais com Falhas</b>", styles["Title"])
+            title = Paragraph("<b>Relatório de Locais Para manutenção</b>", styles["Title"])
             elements.append(title)
             elements.append(Spacer(1, 10))
             subtitle = Paragraph(f"Gerado em: {datetime.now(pytz.timezone('America/Sao_Paulo')).strftime('%d/%m/%Y %H:%M')}", styles["Normal"])
