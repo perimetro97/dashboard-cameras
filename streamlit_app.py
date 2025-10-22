@@ -458,9 +458,9 @@ def render_geral(dfx: pd.DataFrame):
 
             try:
                 if logo_path:
-                    im = Image(logo_path, width=120, height=75)  # preserva proporção
+                    im = Image(logo_path, width=120, height=80)  # preserva proporção
                 elif _logo_bytes:
-                    im = Image(BytesIO(_logo_bytes), width=120, height=75)
+                    im = Image(BytesIO(_logo_bytes), width=120, height=80)
                 else:
                     im = None
                 if im:
