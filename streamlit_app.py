@@ -162,6 +162,7 @@ def load_data(path: str) -> pd.DataFrame:
     Mantém a estrutura original, mas:
     - Se 'path' for URL (Drive), lê direto do link.
     - Senão, tenta a planilha local (compatibilidade).
+    - >>> Ajuste mínimo: inclui a coluna H (Apelido) mesmo sem cabeçalho.
     """
     try:
         if isinstance(path, str) and path.strip().lower().startswith(("http://", "https://")):
@@ -175,8 +176,12 @@ def load_data(path: str) -> pd.DataFrame:
         st.error(f"Erro ao carregar planilha: {e}")
         return pd.DataFrame()
 
-    raw = raw.dropna(how="all").iloc[:, 0:7]
-    raw.columns = ["Local","Cam_Total","Cam_Online","Cam_Status","Alm_Total","Alm_Online","Alm_Status"]
+    # <<< ALTERAÇÃO MINÍMA: agora traz até H (8 colunas) e garante Apelido se faltar >>>
+    raw = raw.dropna(how="all").iloc[:, 0:8]
+    if raw.shape[1] < 8:
+        raw[7] = ""  # cria coluna H vazia se a planilha vier só até G
+
+    raw.columns = ["Local","Cam_Total","Cam_Online","Cam_Status","Alm_Total","Alm_Online","Alm_Status","Apelido"]
     raw = raw.dropna(subset=["Local"])
     raw = raw[~raw["Local"].astype(str).str.contains("TOTAL|RELATÓRIO|RELATORIO", case=False, na=False)]
     for c in ["Cam_Total","Cam_Online","Alm_Total","Alm_Online"]:
@@ -270,7 +275,7 @@ with c_title:
     )
 with c_search:
     st.markdown("<div class='search-box'>", unsafe_allow_html=True)
-    query = st.text_input("Pesquisar local...", "", placeholder="Digite o nome do local…")
+    query = st.text_input("Pesquisar local ou apelido...", "", placeholder="Digite o nome ou apelido…")
     st.markdown("</div>", unsafe_allow_html=True)
 st.markdown("</div>", unsafe_allow_html=True)
 
@@ -308,15 +313,22 @@ if df.empty:
     st.stop()
 # >>>>>>>> REMOVIDO o st.info(...) a pedido <<<<<<<<
 
+# <<< ALTERAÇÃO MINÍMA: busca híbrida Local + Apelido (case-insensitive) >>>
 has_query = bool(query.strip())
-dfv = df if not has_query else df[df["Local"].str.contains(query.strip(), case=False, na=False)]
+if has_query:
+    termo = query.strip().lower()
+    dfv = df[
+        df["Local"].astype(str).str.lower().str.contains(termo, na=False) |
+        df["Apelido"].astype(str).str.lower().str.contains(termo, na=False)
+    ]
+else:
+    dfv = df
 
 # ------------------ RENDER: CÂMERAS ------------------
 def render_cameras(dfx: pd.DataFrame):
     base = dfx[dfx["Cam_Total"] > 0]
-    # Título com ícone da raiz (mantido e acionado)
-    st.markdown(f"#### <img src='{ICON_CAMERA}' width='20' style='vertical-align:middle;margin-right:6px;'/> Câmeras",
-                unsafe_allow_html=True)
+    # >>> Troca mínima: padroniza título com os mesmos ícones dos botões
+    st.markdown(f"#### 📷 Câmeras", unsafe_allow_html=True)
 
     total = int(base["Cam_Total"].sum())
     online = int(base["Cam_Online"].sum())
@@ -353,8 +365,8 @@ def render_cameras(dfx: pd.DataFrame):
 # ------------------ RENDER: ALARMES ------------------
 def render_alarms(dfx: pd.DataFrame):
     base = dfx[dfx["Alm_Total"] > 0]
-    st.markdown(f"#### <img src='{ICON_ALARME}' width='20' style='vertical-align:middle;margin-right:6px;'/> Alarmes",
-                unsafe_allow_html=True)
+    # >>> Troca mínima: padroniza título com os mesmos ícones dos botões
+    st.markdown(f"#### 🚨 Alarmes", unsafe_allow_html=True)
 
     total = int(base["Alm_Total"].sum())
     online = int(base["Alm_Online"].sum())
@@ -389,7 +401,8 @@ def render_alarms(dfx: pd.DataFrame):
 
 # ------------------ RENDER: GERAL ------------------
 def render_geral(dfx: pd.DataFrame):
-    st.markdown(f"#### <img src='{ICON_RELATORIO}' width='20' style='vertical-align:middle;margin-right:6px;'/> Geral (Câmeras + Alarmes)",
+    # >>> Troca mínima: padroniza título com os mesmos ícones dos botões
+    st.markdown(f"#### 📊 Geral (Câmeras + Alarmes)",
                 unsafe_allow_html=True)
 
     cam = dfx[dfx["Cam_Total"]>0]; alm = dfx[dfx["Alm_Total"]>0]
@@ -426,7 +439,7 @@ def render_geral(dfx: pd.DataFrame):
                 columns={"Cam_Falta": "Câmeras Faltantes", "Alm_Falta": "Alarmes Faltantes"}
             )
 
-            # >>> adição mínima: logo no topo do PDF
+            # >>> adição mínima: logo centralizada e proporcional no topo do PDF
             from reportlab.lib.pagesizes import A4
             from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image
             from reportlab.lib import colors
@@ -437,15 +450,25 @@ def render_geral(dfx: pd.DataFrame):
             styles = getSampleStyleSheet()
             elements = []
 
-            # Inserir logo se existir em disco (usa os mesmos candidatos do app)
-            logo_path = None
-            for p in LOGO_FILE_CANDIDATES:
-                if os.path.exists(p):
-                    logo_path = p
-                    break
-            if logo_path:
-                elements.append(Image(logo_path, width=120, height=40))
-                elements.append(Spacer(1, 8))
+            # Logo: tenta arquivo; se não, usa bytes carregados do app
+            try:
+                logo_path = next((p for p in LOGO_FILE_CANDIDATES if os.path.exists(p)), None)
+            except StopIteration:
+                logo_path = None
+
+            try:
+                if logo_path:
+                    im = Image(logo_path, width=120)  # preserva proporção
+                elif _logo_bytes:
+                    im = Image(BytesIO(_logo_bytes), width=120)
+                else:
+                    im = None
+                if im:
+                    im.hAlign = "CENTER"
+                    elements.append(im)
+                    elements.append(Spacer(1, 8))
+            except Exception:
+                pass
 
             title = Paragraph("<b>Relatório de Locais com Falhas</b>", styles["Title"])
             elements.append(title)
