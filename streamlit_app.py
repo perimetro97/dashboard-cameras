@@ -1,6 +1,6 @@
 # =========================================================
-# Dashboard Operacional – Grupo Perímetro (v5.6.2 → v5.7)
-# CFTV & Alarmes • Visual Pro •
+# Dashboard Operacional – Grupo Perímetro 
+# CFTV & Alarmes
 # =========================================================
 import os, requests
 from datetime import datetime
@@ -25,14 +25,14 @@ PLANILHA = "dados.xlsx"              # mantido (compatibilidade + segurança)
 ROOT_PATH = Path(__file__).parent
 PLANILHA_PATH = ROOT_PATH / PLANILHA 
 
-# Logo somente do repositório / arquivo (Base64)
+# Logo somente do repositório / arquivo (Base64 teste)
 LOGO_FILE_CANDIDATES = [
     "logo.png", "./logo.png", "/app/logo.png", "/mount/src/dashboard-cameras/logo.png",
     "logo_perimetro.png", "./logo_perimetro.png"
 ]
 LOGO_URL_RAW = "https://raw.githubusercontent.com/perimetro97/dashboard-cameras/main/logo.png"
 
-# Ícones na raiz do repositório (apenas para os títulos de seção)
+# Ícones na raiz do repositório
 ICON_CAMERA     = "camera.png"
 ICON_ALARME     = "alarme.png"
 ICON_ENGRENAGEM = "engrenagem.png"
@@ -266,7 +266,7 @@ with c_logo:
     st.markdown("</div>", unsafe_allow_html=True)
 
 with c_title:
-    # <-- apenas esta linha mudou para horário de Brasília
+    # <-- horário de Brasília
     hora_brasilia = datetime.now(pytz.timezone("America/Sao_Paulo"))
     st.markdown(
         f"<div class='title'>Dashboard Operacional – CFTV &amp; Alarmes</div>"
@@ -306,14 +306,14 @@ with b3: tab_button("📊 Geral",   "Geral",   "btn_ger")
 st.divider()
 
 # ------------------ DADOS ------------------
-# Agora LENDO DIRETO DO DRIVE (sem mexer na assinatura da função)
+# Agora LENDO DIRETO DO DRIVE - banco de dados online
 df = load_data(DRIVE_URL)
 if df.empty:
     st.error("Não foi possível ler dados do Google Drive. Verifique o link e permissões.")
     st.stop()
 # >>>>>>>> REMOVIDO o st.info(...) a pedido <<<<<<<<
 
-# <<< ALTERAÇÃO MINÍMA: busca híbrida Local + Apelido (case-insensitive) >>>
+# <<< busca híbrida Local + Apelido (case-insensitive) >>>
 has_query = bool(query.strip())
 if has_query:
     termo = query.strip().lower()
@@ -327,7 +327,7 @@ else:
 # ------------------ RENDER: CÂMERAS ------------------
 def render_cameras(dfx: pd.DataFrame):
     base = dfx[dfx["Cam_Total"] > 0]
-    # >>> Troca mínima: padroniza título com os mesmos ícones dos botões
+    # >>> padroniza título com os mesmos ícones dos botões
     st.markdown(f"#### 📷 Câmeras", unsafe_allow_html=True)
 
     total = int(base["Cam_Total"].sum())
@@ -401,7 +401,7 @@ def render_alarms(dfx: pd.DataFrame):
 
 # ------------------ RENDER: GERAL ------------------
 def render_geral(dfx: pd.DataFrame):
-    # >>> Troca mínima: padroniza título com os mesmos ícones dos botões
+    # >>> padroniza título com os mesmos ícones dos botões
     st.markdown(f"#### 📊 Geral (Câmeras + Alarmes)",
                 unsafe_allow_html=True)
 
@@ -430,7 +430,7 @@ def render_geral(dfx: pd.DataFrame):
     # --------- Relatório PDF (apenas locais para manutenção) ---------
     st.markdown("### 📄 Relatório de locais para manutenção")
 
-    # Controle de estado (fluxo em 3 etapas)
+    # Controle de estado
     if "gerando_pdf" not in st.session_state:
         st.session_state.gerando_pdf = False
 
@@ -439,7 +439,7 @@ def render_geral(dfx: pd.DataFrame):
         if st.button("🖨️ Gerar Relatório PDF"):
             st.session_state.gerando_pdf = True
 
-    # Etapa 2 – Após clique, pede o nome do operador
+    # Etapa 2 – Após clique, pede o nome do operador - plantão
     if st.session_state.gerando_pdf:
         nome_operador = st.text_input("Digite o nome do operador responsável pelo plantão:")
 
