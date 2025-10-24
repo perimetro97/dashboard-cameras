@@ -427,8 +427,8 @@ def render_geral(dfx: pd.DataFrame):
         "Resumo Geral"
     )
 
-    # --------- Relatório PDF (apenas locais com falhas) ---------
-    st.markdown("### 📄 Relatório de Locais com Problemas")
+    # --------- Relatório PDF (apenas locais para manutenção) ---------
+    st.markdown("### 📄 Relatório de locais para manutenção")
 
     # Controle de estado (fluxo em 3 etapas)
     if "gerando_pdf" not in st.session_state:
@@ -454,7 +454,7 @@ def render_geral(dfx: pd.DataFrame):
                     columns={"Cam_Falta": "Câmeras Offline", "Alm_Falta": "Alarmes Offline"}
                 )
 
-                # >>> geração do PDF (mantendo estilo original)
+                # >>> geração do PDF 
                 from reportlab.lib.pagesizes import A4
                 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image
                 from reportlab.lib import colors
@@ -494,7 +494,7 @@ def render_geral(dfx: pd.DataFrame):
                 subtitle = Paragraph(f"Gerado em: {data_brasilia}", styles["Normal"])
                 elements.append(subtitle)
                 # >>> NOVO: linha de plantão (sem alterar o visual)
-                elements.append(Paragraph(f"<b>Plantão {nome_operador}</b>", styles["Normal"]))
+                elements.append(Paragraph(f"<b>Plantão - {nome_operador}</b>", styles["Normal"]))
                 elements.append(Spacer(1, 12))
 
                 data = [list(table_df.columns)]
