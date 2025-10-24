@@ -427,96 +427,105 @@ def render_geral(dfx: pd.DataFrame):
         "Resumo Geral"
     )
 
-    # -------- Relatório PDF (apenas locais com falhas) --------
+   # =========================================================
+# Relatório PDF - Locais para manutenção / offline
+# =========================================================
 st.markdown("### 📄 Relatório de locais para manutenção")
 
-# Estado inicial
+# garante que o DataFrame dfx já existe (geralmente vem da planilha principal)
+# se o seu DataFrame tiver outro nome, ajuste aqui:
+# exemplo: dfx = df_cameras  (ou df_geral, se for o nome no seu app)
+
 if "gerando_pdf" not in st.session_state:
     st.session_state.gerando_pdf = False
 
-# Etapa 1 – Botão inicial 
+# ===== Etapa 1 – Botão inicial =====
 if not st.session_state.gerando_pdf:
     if st.button("🖨️ Gerar Relatório PDF"):
         st.session_state.gerando_pdf = True
 
-# Etapa 2 – Após clicar, campo de nome aparece
+# ===== Etapa 2 – Após clicar, pede nome =====
 if st.session_state.gerando_pdf:
     nome_operador = st.text_input("Digite o nome do operador responsável pelo plantão:")
 
-    # Só prossegue se o nome for digitado
+    # Só prossegue se o nome for preenchido
     if nome_operador:
-        faltando = dfx[(dfx["Cam_Falta"] > 0) | (dfx["Alm_Falta"] > 0)].copy()
+        try:
+            faltando = dfx[(dfx["Cam_Falta"] > 0) | (dfx["Alm_Falta"] > 0)].copy()
 
-        if faltando.empty:
-            st.info("Nenhum local para manutenção no momento.")
-        else:
-            # Renomeia as colunas para exibir no relatório
-            table_df = faltando.loc[:, ["Local", "Cam_Falta", "Alm_Falta"]].rename(
-                columns={"Cam_Falta": "Câmeras Offline", "Alm_Falta": "Alarmes Offline"}
-            )
+            if faltando.empty:
+                st.info("Nenhum local para manutenção no momento.")
+            else:
+                table_df = faltando.loc[:, ["Local", "Cam_Falta", "Alm_Falta"]].rename(
+                    columns={"Cam_Falta": "Câmeras Offline", "Alm_Falta": "Alarmes Offline"}
+                )
 
-            # ======= GERAÇÃO DO PDF =======
-            from reportlab.lib.pagesizes import A4
-            from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image
-            from reportlab.lib import colors
-            from reportlab.lib.styles import getSampleStyleSheet
-            from datetime import datetime
+                from reportlab.lib.pagesizes import A4
+                from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image
+                from reportlab.lib import colors
+                from reportlab.lib.styles import getSampleStyleSheet
+                from datetime import datetime
+                import io
 
-            pdf_name = f"Relatório_plantao_{nome_operador}.pdf"
-            doc = SimpleDocTemplate(pdf_name, pagesize=A4)
-            styles = getSampleStyleSheet()
-            elements = []
+                # Cria PDF em memória
+                buffer = io.BytesIO()
+                doc = SimpleDocTemplate(buffer, pagesize=A4)
+                styles = getSampleStyleSheet()
+                elements = []
 
-            # Logo (mantém o mesmo esquema)
-            try:
-                logo_path = next((p for p in LOGO_FILE_CANDIDATES if os.path.exists(p)), None)
-                if logo_path:
-                    elements.append(Image(logo_path, width=80, height=80))
-            except Exception as e:
-                st.warning(f"Logo não encontrada: {e}")
+                # Logo
+                try:
+                    logo_path = next((p for p in LOGO_FILE_CANDIDATES if os.path.exists(p)), None)
+                    if logo_path:
+                        elements.append(Image(logo_path, width=80, height=80))
+                except Exception as e:
+                    st.warning(f"Logo não encontrada: {e}")
 
-            # Cabeçalho
-            elements.append(Spacer(1, 10))
-            elements.append(Paragraph("<b>Relatório de Locais para Manutenção</b>", styles["Title"]))
-            elements.append(Spacer(1, 6))
+                # Cabeçalho
+                elements.append(Spacer(1, 10))
+                elements.append(Paragraph("<b>Relatório de Locais para Manutenção</b>", styles["Title"]))
+                elements.append(Spacer(1, 6))
 
-            # Data + Plantão
-            data_atual = datetime.now().strftime("%d/%m/%Y %H:%M")
-            elements.append(Paragraph(f"Gerado em: {data_atual}", styles["Normal"]))
-            elements.append(Paragraph(f"<b>Plantão do {nome_operador}</b>", styles["Normal"]))
-            elements.append(Spacer(1, 12))
+                # Data + Plantão
+                data_atual = datetime.now().strftime("%d/%m/%Y %H:%M")
+                elements.append(Paragraph(f"Gerado em: {data_atual}", styles["Normal"]))
+                elements.append(Paragraph(f"<b>Plantão do {nome_operador}</b>", styles["Normal"]))
+                elements.append(Spacer(1, 12))
 
-            # Tabela de dados
-            data = [list(table_df.columns)]
-            for _, row in table_df.iterrows():
-                data.append([str(row["Local"]), int(row["Câmeras Offline"]), int(row["Alarmes Offline"])])
+                # Tabela
+                data = [list(table_df.columns)]
+                for _, row in table_df.iterrows():
+                    data.append([str(row["Local"]), int(row["Câmeras Offline"]), int(row["Alarmes Offline"])])
 
-            table = Table(data, repeatRows=1)
-            table.setStyle(TableStyle([
-                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#181F3F")),  # azul da logo
-                ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                ('FONTSIZE', (0, 0), (-1, -1), 10),
-                ('BOTTOMPADDING', (0, 0), (-1, 0), 8),
-                ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
-            ]))
+                table = Table(data, repeatRows=1)
+                table.setStyle(TableStyle([
+                    ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#181F3F")),
+                    ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+                    ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                    ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                    ('FONTSIZE', (0, 0), (-1, -1), 10),
+                    ('BOTTOMPADDING', (0, 0), (-1, 0), 8),
+                    ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+                ]))
 
-            elements.append(table)
-            doc.build(elements)
+                elements.append(table)
+                doc.build(elements)
+                buffer.seek(0)
 
-            # Etapa 3 – Botão para baixar
-            with open(pdf_name, "rb") as f:
+                # ===== Etapa 3 – Download =====
                 st.download_button(
                     label="⬇️ Baixar Relatório PDF",
-                    data=f,
-                    file_name=pdf_name,
+                    data=buffer,
+                    file_name=f"Relatorio_Plantao_{nome_operador}.pdf",
                     mime="application/pdf"
                 )
 
-        # Após gerar ou baixar, reseta o estado
-        st.session_state.gerando_pdf = False
-      
+            # Reseta estado depois
+            st.session_state.gerando_pdf = False
+
+        except Exception as e:
+            st.error(f"Erro ao gerar PDF: {e}")
+          
 # ------------------ DISPATCH ------------------
 tab = st.session_state.tab
 if tab == "Câmeras":
