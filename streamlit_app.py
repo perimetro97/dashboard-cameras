@@ -428,15 +428,15 @@ def render_geral(dfx: pd.DataFrame):
     )
 
     # --------- Relatório PDF (apenas locais com falhas) ---------
-    st.markdown("### 📄 Relatório de Locais com Problemas")
+    st.markdown("### 📄 Relatório de locais para manutenção")
     if st.button("🖨️ Gerar Relatório PDF"):
         faltando = dfx[(dfx["Cam_Falta"] > 0) | (dfx["Alm_Falta"] > 0)].copy()
 
         if faltando.empty:
-            st.info("Nenhum local com falhas no momento.")
+            st.info("Nenhum local para manutenção no momento.")
         else:
             table_df = faltando.loc[:, ["Local", "Cam_Falta", "Alm_Falta"]].rename(
-                columns={"Cam_Falta": "Câmeras Faltantes", "Alm_Falta": "Alarmes Faltantes"}
+                columns={"Cam_Falta": "Câmeras Offline", "Alm_Falta": "Alarmes Offline"}
             )
 
             # >>> adição mínima: logo centralizada e proporcional no topo do PDF
@@ -458,9 +458,9 @@ def render_geral(dfx: pd.DataFrame):
 
             try:
                 if logo_path:
-                    im = Image(logo_path, width=120, height=80)  # preserva proporção
+                    im = Image(logo_path, width=120, height=82)  # preserva proporção
                 elif _logo_bytes:
-                    im = Image(BytesIO(_logo_bytes), width=120, height=80)
+                    im = Image(BytesIO(_logo_bytes), width=120, height=82)
                 else:
                     im = None
                 if im:
@@ -470,7 +470,7 @@ def render_geral(dfx: pd.DataFrame):
             except Exception:
                 pass
 
-            title = Paragraph("<b>Relatório de Locais Para manutenção</b>", styles["Title"])
+            title = Paragraph("<b>Relatório de locais para manutenção</b>", styles["Title"])
             elements.append(title)
             elements.append(Spacer(1, 10))
             subtitle = Paragraph(f"Gerado em: {datetime.now(pytz.timezone('America/Sao_Paulo')).strftime('%d/%m/%Y %H:%M')}", styles["Normal"])
