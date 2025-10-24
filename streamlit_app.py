@@ -434,7 +434,7 @@ def render_geral(dfx: pd.DataFrame):
     if "gerando_pdf" not in st.session_state:
         st.session_state.gerando_pdf = False
 
-    # Etapa 1 – Botão inicial (mesmo lugar de sempre)
+    # Etapa 1 – Botão inicial 
     if not st.session_state.gerando_pdf:
         if st.button("🖨️ Gerar Relatório PDF"):
             st.session_state.gerando_pdf = True
@@ -451,7 +451,7 @@ def render_geral(dfx: pd.DataFrame):
                 st.session_state.gerando_pdf = False
             else:
                 table_df = faltando.loc[:, ["Local", "Cam_Falta", "Alm_Falta"]].rename(
-                    columns={"Cam_Falta": "Câmeras Faltantes", "Alm_Falta": "Alarmes Faltantes"}
+                    columns={"Cam_Falta": "Câmeras Offline", "Alm_Falta": "Alarmes Offline"}
                 )
 
                 # >>> geração do PDF (mantendo estilo original)
@@ -474,9 +474,9 @@ def render_geral(dfx: pd.DataFrame):
 
                 try:
                     if logo_path:
-                        im = Image(logo_path, width=120)  # preserva proporção
+                        im = Image(logo_path, width=120, height=84)  # preserva proporção
                     elif _logo_bytes:
-                        im = Image(BytesIO(_logo_bytes), width=120)
+                        im = Image(BytesIO(_logo_bytes), width=120, height=84)
                     else:
                         im = None
                     if im:
@@ -486,7 +486,7 @@ def render_geral(dfx: pd.DataFrame):
                 except Exception:
                     pass
 
-                title = Paragraph("<b>Relatório de Locais com Falhas</b>", styles["Title"])
+                title = Paragraph("<b>Relatório de locais paa manutenção</b>", styles["Title"])
                 elements.append(title)
                 elements.append(Spacer(1, 10))
 
@@ -499,7 +499,7 @@ def render_geral(dfx: pd.DataFrame):
 
                 data = [list(table_df.columns)]
                 for _, row in table_df.iterrows():
-                    data.append([str(row["Local"]), int(row["Câmeras Faltantes"]), int(row["Alarmes Faltantes"])])
+                    data.append([str(row["Local"]), int(row["Câmeras Offline"]), int(row["Alarmes Offline"])])
 
                 table = Table(data, repeatRows=1)
                 table.setStyle(TableStyle([
