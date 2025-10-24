@@ -6,7 +6,7 @@ import os, requests
 from datetime import datetime
 from io import BytesIO
 from pathlib import Path
-import pytz  # <-- adicionado para horário de Brasília
+import pytz  # <-- horário de Brasília
 
 import streamlit as st
 import pandas as pd
@@ -21,11 +21,11 @@ st.set_page_config(page_title="Dashboard Operacional – CFTV & Alarmes",
 DRIVE_FILE_ID = "1LofqwV9_fXfKAGbqjk2LEfgSQmJvUiuA"
 DRIVE_URL = f"https://drive.google.com/uc?export=download&id={DRIVE_FILE_ID}"
 
-PLANILHA = "dados.xlsx"              # mantido (compatibilidade)
+PLANILHA = "dados.xlsx"              # mantido (compatibilidade + segurança)
 ROOT_PATH = Path(__file__).parent
-PLANILHA_PATH = ROOT_PATH / PLANILHA # mantido
+PLANILHA_PATH = ROOT_PATH / PLANILHA 
 
-# Logo somente do repositório / arquivo (sem Base64)
+# Logo somente do repositório / arquivo (Base64)
 LOGO_FILE_CANDIDATES = [
     "logo.png", "./logo.png", "/app/logo.png", "/mount/src/dashboard-cameras/logo.png",
     "logo_perimetro.png", "./logo_perimetro.png"
