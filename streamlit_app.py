@@ -486,7 +486,7 @@ def render_geral(dfx: pd.DataFrame):
                 except Exception:
                     pass
 
-                title = Paragraph("<b>Relatório de locais paa manutenção</b>", styles["Title"])
+                title = Paragraph("<b>Relatório de locais para manutenção</b>", styles["Title"])
                 elements.append(title)
                 elements.append(Spacer(1, 10))
 
@@ -494,7 +494,7 @@ def render_geral(dfx: pd.DataFrame):
                 subtitle = Paragraph(f"Gerado em: {data_brasilia}", styles["Normal"])
                 elements.append(subtitle)
                 # >>> NOVO: linha de plantão (sem alterar o visual)
-                elements.append(Paragraph(f"<b>Plantão do {nome_operador}</b>", styles["Normal"]))
+                elements.append(Paragraph(f"<b>Plantão {nome_operador}</b>", styles["Normal"]))
                 elements.append(Spacer(1, 12))
 
                 data = [list(table_df.columns)]
