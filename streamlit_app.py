@@ -479,7 +479,7 @@ def render_geral(dfx: pd.DataFrame):
 
             data = [list(table_df.columns)]
             for _, row in table_df.iterrows():
-                data.append([str(row["Local"]), int(row["Câmeras Faltantes"]), int(row["Alarmes Faltantes"])])
+                data.append([str(row["Local"]), int(row["Câmeras Offline"]), int(row["Alarmes Offline"])])
 
             table = Table(data, repeatRows=1)
             table.setStyle(TableStyle([
