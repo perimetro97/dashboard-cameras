@@ -17,18 +17,6 @@ import plotly.express as px
 st.set_page_config(page_title="Dashboard Operacional – CFTV & Alarmes",
                    page_icon="📹", layout="wide")
 
-# === NOME DO RELATÓRIO (editável pelo usuário) ===
-st.markdown("---")
-st.subheader("🧾 Identificação do Relatório")
-
-nome_relatorio = st.text_input(
-    "Digite o nome do relatório:",
-    value="Relatório Operacional – Grupo Perímetro"
-)
-
-st.markdown(f"### {nome_relatorio}")
-st.markdown("---")
-
 # === NOVO: leitura direta do Excel no Google Drive (Opção B) ===
 DRIVE_FILE_ID = "1LofqwV9_fXfKAGbqjk2LEfgSQmJvUiuA"
 DRIVE_URL = f"https://drive.google.com/uc?export=download&id={DRIVE_FILE_ID}"
