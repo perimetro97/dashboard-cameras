@@ -427,73 +427,85 @@ def render_geral(dfx: pd.DataFrame):
         "Resumo Geral"
     )
 
-    # --------- Relatório PDF (apenas locais com falhas) ---------
-    st.markdown("### 📄 Relatório de Locais com Problemas")
+    # -------- Relatório PDF (apenas locais com falhas) --------
+st.markdown("### 📄 Relatório de locais para manutenção")
+
+# Estado inicial
+if "gerando_pdf" not in st.session_state:
+    st.session_state.gerando_pdf = False
+
+# Etapa 1 – Botão inicial 
+if not st.session_state.gerando_pdf:
     if st.button("🖨️ Gerar Relatório PDF"):
+        st.session_state.gerando_pdf = True
+
+# Etapa 2 – Após clicar, campo de nome aparece
+if st.session_state.gerando_pdf:
+    nome_operador = st.text_input("Digite o nome do operador responsável pelo plantão:")
+
+    # Só prossegue se o nome for digitado
+    if nome_operador:
         faltando = dfx[(dfx["Cam_Falta"] > 0) | (dfx["Alm_Falta"] > 0)].copy()
 
         if faltando.empty:
-            st.info("Nenhum local com falhas no momento.")
+            st.info("Nenhum local para manutenção no momento.")
         else:
+            # Renomeia as colunas para exibir no relatório
             table_df = faltando.loc[:, ["Local", "Cam_Falta", "Alm_Falta"]].rename(
-                columns={"Cam_Falta": "Câmeras Faltantes", "Alm_Falta": "Alarmes Faltantes"}
+                columns={"Cam_Falta": "Câmeras Offline", "Alm_Falta": "Alarmes Offline"}
             )
 
-            # >>> adição mínima: logo centralizada e proporcional no topo do PDF
+            # ======= GERAÇÃO DO PDF =======
             from reportlab.lib.pagesizes import A4
             from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image
             from reportlab.lib import colors
             from reportlab.lib.styles import getSampleStyleSheet
+            from datetime import datetime
 
-            pdf_name = "Relatório_Cftv&alarmes.pdf"
+            pdf_name = f"Relatório_plantao_{nome_operador}.pdf"
             doc = SimpleDocTemplate(pdf_name, pagesize=A4)
             styles = getSampleStyleSheet()
             elements = []
 
-            # Logo: tenta arquivo; se não, usa bytes carregados do app
+            # Logo (mantém o mesmo esquema)
             try:
                 logo_path = next((p for p in LOGO_FILE_CANDIDATES if os.path.exists(p)), None)
-            except StopIteration:
-                logo_path = None
-
-            try:
                 if logo_path:
-                    im = Image(logo_path, width=120, height=80)  # preserva proporção
-                elif _logo_bytes:
-                    im = Image(BytesIO(_logo_bytes), width=120, height=80)
-                else:
-                    im = None
-                if im:
-                    im.hAlign = "CENTER"
-                    elements.append(im)
-                    elements.append(Spacer(1, 8))
-            except Exception:
-                pass
+                    elements.append(Image(logo_path, width=80, height=80))
+            except Exception as e:
+                st.warning(f"Logo não encontrada: {e}")
 
-            title = Paragraph("<b>Relatório de Locais Para manutenção</b>", styles["Title"])
-            elements.append(title)
+            # Cabeçalho
             elements.append(Spacer(1, 10))
-            subtitle = Paragraph(f"Gerado em: {datetime.now(pytz.timezone('America/Sao_Paulo')).strftime('%d/%m/%Y %H:%M')}", styles["Normal"])
-            elements.append(subtitle)
+            elements.append(Paragraph("<b>Relatório de Locais para Manutenção</b>", styles["Title"]))
+            elements.append(Spacer(1, 6))
+
+            # Data + Plantão
+            data_atual = datetime.now().strftime("%d/%m/%Y %H:%M")
+            elements.append(Paragraph(f"Gerado em: {data_atual}", styles["Normal"]))
+            elements.append(Paragraph(f"<b>Plantão do {nome_operador}</b>", styles["Normal"]))
             elements.append(Spacer(1, 12))
 
+            # Tabela de dados
             data = [list(table_df.columns)]
             for _, row in table_df.iterrows():
-                data.append([str(row["Local"]), int(row["Câmeras Faltantes"]), int(row["Alarmes Faltantes"])])
+                data.append([str(row["Local"]), int(row["Câmeras Offline"]), int(row["Alarmes Offline"])])
 
             table = Table(data, repeatRows=1)
             table.setStyle(TableStyle([
-                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#1B1F3B")),  # azul da logo
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#181F3F")),  # azul da logo
                 ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
                 ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
                 ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                ('FONTSIZE', (0, 0), (-1, 0), 11),
+                ('FONTSIZE', (0, 0), (-1, -1), 10),
                 ('BOTTOMPADDING', (0, 0), (-1, 0), 8),
                 ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
             ]))
+
             elements.append(table)
             doc.build(elements)
 
+            # Etapa 3 – Botão para baixar
             with open(pdf_name, "rb") as f:
                 st.download_button(
                     label="⬇️ Baixar Relatório PDF",
@@ -502,6 +514,9 @@ def render_geral(dfx: pd.DataFrame):
                     mime="application/pdf"
                 )
 
+        # Após gerar ou baixar, reseta o estado
+        st.session_state.gerando_pdf = False
+      
 # ------------------ DISPATCH ------------------
 tab = st.session_state.tab
 if tab == "Câmeras":
