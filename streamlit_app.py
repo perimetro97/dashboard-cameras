@@ -17,11 +17,11 @@ import plotly.express as px
 st.set_page_config(page_title="Dashboard Operacional – CFTV & Alarmes",
                    page_icon="📹", layout="wide")
 
-# === NOVO: leitura direta do Excel no Google Drive (Opção B) ===
+# === NOVO: leitura direta do Excel no Google Drive ===
 DRIVE_FILE_ID = "1LofqwV9_fXfKAGbqjk2LEfgSQmJvUiuA"
 DRIVE_URL = f"https://drive.google.com/uc?export=download&id={DRIVE_FILE_ID}"
 
-PLANILHA = "dados.xlsx"              # mantido (compatibilidade + segurança)
+PLANILHA = "dados.xlsx"           
 ROOT_PATH = Path(__file__).parent
 PLANILHA_PATH = ROOT_PATH / PLANILHA 
 
@@ -176,7 +176,7 @@ def load_data(path: str) -> pd.DataFrame:
         st.error(f"Erro ao carregar planilha: {e}")
         return pd.DataFrame()
 
-    # <<< ALTERAÇÃO MINÍMA: agora traz até H (8 colunas) e garante Apelido se faltar >>>
+    # <<< agora traz até H (8 colunas) e garante Apelido se faltar >>>
     raw = raw.dropna(how="all").iloc[:, 0:8]
     if raw.shape[1] < 8:
         raw[7] = ""  # cria coluna H vazia se a planilha vier só até G
@@ -275,7 +275,7 @@ with c_title:
     )
 with c_search:
     st.markdown("<div class='search-box'>", unsafe_allow_html=True)
-    query = st.text_input("Pesquisar local ou apelido...", "", placeholder="Digite o nome ou apelido…")
+    query = st.text_input("Pesquisar local 🔎", "", placeholder="Digite o nome ou apelido…")
     st.markdown("</div>", unsafe_allow_html=True)
 st.markdown("</div>", unsafe_allow_html=True)
 
